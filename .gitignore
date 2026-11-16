@@ -1,0 +1,12 @@
+# Python Virtual Environment & Cache
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Zephyr Build Artifacts
+build/
+.west/
+
+.DS_Store

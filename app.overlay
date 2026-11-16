@@ -1,0 +1,35 @@
+/*
+ * DeviceTree Overlay สำหรับ STM32H563ZI (Nucleo-H563ZI)
+ *
+ * 1. I2C1: ทำหน้าที่เป็น Target (Slave) จำลอง Sensor Registers ที่ Address 0x58
+ *          (พินเริ่มต้นบนบอร์ด Arduino D15/D14: PB8 = SCL, PB9 = SDA)
+ * 2. I2C2: ทำหน้าที่เป็น Controller (Master) ใช้สำหรับทดสอบ Loopback บนบอร์ดตัวเอง
+ *          (พิน Morpho Header: PF1 = SCL, PF0 = SDA)
+ */
+
+/ {
+    aliases {
+        hil-target = &pressure_target;
+        hil-master = &i2c2;
+    };
+};
+
+/* I2C1: กำหนดเป็น Target (Slave) */
+&i2c1 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_FAST>; /* 400 kHz */
+
+    pressure_target: eeprom_slave@58 {
+        compatible = "zephyr,i2c-target-eeprom";
+        reg = <0x58>;
+        size = <256>; /* กำหนดขนาด Buffer เสมือนขนาด 256 ไบต์ */
+    };
+};
+
+/* I2C2: กำหนดเป็น Controller (Master) */
+&i2c2 {
+    pinctrl-0 = <&i2c2_scl_pf1 &i2c2_sda_pf0>;
+    pinctrl-names = "default";
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_FAST>; /* 400 kHz */
+};
