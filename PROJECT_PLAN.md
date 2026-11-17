@@ -2,153 +2,117 @@
 ## โครงการ: Hardware-in-the-Loop (HIL) Testbench with Azure CI/CD for Kria KR260 (GI Detect System)
 
 > **เอกสารสำหรับ AI Agent และ Developers:**  
-> โปรดอ่านเอกสารนี้ก่อนเริ่มทำงานต่อ เพื่อทำความเข้าใจสถาปัตยกรรมระบบ สถานะปัจจุบัน (Current Progress) และงานในลำดับถัดไป (Next Milestones)
+> เอกสารฉบับนี้เป็น Single Source of Truth สรุปสถานะความคืบหน้าล่าสุด (Current Progress), การปรับเปลี่ยนสถาปัตยกรรม (Architectural Refinements), และลำดับงานถัดไป (Next Tasks)
 
 ---
 
-## 1. ภาพรวมสถาปัตยกรรมระบบ (System Architecture)
-
-ระบบแบ่งออกเป็น 3 ส่วนหลักที่ทำงานร่วมกันแบบ Closed-Loop HIL:
+## 1. ภาพรวมสถาปัตยกรรมระบบ (Updated System Architecture)
 
 ```
 +---------------------------------------------------------------------------------+
 |                       1. Laptop Host & CI/CD Orchestrator                       |
 | - Azure DevOps Self-hosted Agent                                                |
-| - Pytest Testbench Controller (ส่งคำสั่ง & อ่านค่าตรวจสอบ)                       |
-| - Virtual Video Injection Engine (ส่ง Frame ภาพจำลองเข้า KR260)                 |
+| - Pytest Testbench Controller (USB Serial 115200 Auto-detect)                   |
+| - Pure JUnit XML Test Reporting (PublishTestResults@2)                          |
+| - Virtual Video Injection Engine (GStreamer ผ่าน Ethernet LAN)                  |
 +------------------------+-----------------------------------+--------------------+
-                         | (USB Serial 115200)               | (Ethernet / SSH)
+                         | (USB Serial Auto-detect)          | (Ethernet / SSH)
                          v                                   v
 +----------------------------------------+   +------------------------------------+
 | 2. Plant Simulator: STM32H563ZI        |   | 3. Target Under Test (DUT): KR260  |
 | (OS: Zephyr RTOS 4.x)                  |   | (OS: Kria Ubuntu / PetaLinux)      |
 |                                        |   |                                    |
-| [Firmware Components]                  |   | [PL - FPGA Fabric]                 |
+| [Firmware Components - เสร็จแล้ว 100%] |   | [PL - FPGA Fabric]                 |
 | - I2C Target (EEPROM Addr 0x58):       |   | - ADC Interface / I2S Mic Core     |
-|   จำลองเซนเซอร์ความดัน Pressure Sensor |<--+-- PWM Airpump Output               |
-| - I2C Master Loopback (PF1/PF0):       |   | - Solenoid Valve GPIO Output       |
-|   ใช้ทำ Self-test บนบอร์ดตัวเอง        |<--+-- Vitis AI DPU IP Core             |
-| - Background Physics Simulation Thread:|   |                                    |
-|   จำลองการเปลี่ยนแปลงความดันแบบ Real-time  |   | [PS - ARM Cortex-A53]              |
-| - Zephyr Shell Commands (hil status...)|   | - Vitis AI Inference (GI Detect)   |
-| - [TODO] Timer Input Capture วัด PWM   |   | - Audio Leakage Classification     |
-| - [TODO] DAC + DMA สร้างสัญญาณเสียง Mic|   | - PID Pressure Controller          |
-|                                        |   | - UI Stream (DisplayPort Output)   |
-+----------------------------------------+   +------------------------------------+
+|   จำลองเซนเซอร์ความดัน Pressure Sensor |<==+== PWM Airpump Output               |
+| - Background Physics Simulation Thread:|   | - Solenoid Valve GPIO Output       |
+|   คำนวณความดัน Real-time 20 Hz (Mutex) |<==+== Vitis AI DPU IP Core             |
+| - Zephyr Shell Commands (hil status...)|   |                                    |
+| - Robust Serial Parser (Non-blocking)  |   | [PS - ARM Cortex-A53]              |
+|                                        |   | - Vitis AI Inference (GI Detect)   |
+| [TODO in Phase 3 & 4]                  |   | - Audio Leakage Classification     |
+| - Timer Input Capture วัด PWM ปั๊มลม    |   | - PID Pressure Controller          |
+| - DAC + DMA สร้างสัญญาณเสียงลมรั่ว     |   | - v4l2loopback Virtual Camera      |
++----------------------------------------+   | - UI Stream (DisplayPort Output)   |
+                                             +------------------------------------+
 ```
 
 ---
 
-## 2. สถานะความคืบหน้าปัจจุบัน (Current Progress)
+## 2. สถานะความคืบหน้าล่าสุด (Current Progress Snapshot)
 
-### ✅ สิ่งที่ทำเสร็จสมบูรณ์แล้ว (Completed Milestones)
+### ✅ Phase 1: STM32 Plant Simulator & Test Harness (เสร็จสมบูรณ์ 100%)
 
-1. **โครงสร้างโปรเจกต์ HIL STM32 (Zephyr RTOS Out-of-tree):**
-   * [CMakeLists.txt](file:///Users/pongpipat/hil/CMakeLists.txt): ตั้งค่าดึง Zephyr Base จาก `~/stm32/zephyr`
-   * [prj.conf](file:///Users/pongpipat/hil/prj.conf): เปิดใช้งาน `CONFIG_I2C_TARGET`, `CONFIG_I2C_EEPROM_TARGET`, `CONFIG_SHELL`
-   * [app.overlay](file:///Users/pongpipat/hil/app.overlay): แมปพินฮาร์ดแวร์บน STM32H563ZI:
-     * `I2C1`: Target (Slave) Address `0x58` (พิน Arduino D15/D14: `PB8` SCL, `PB9` SDA)
-     * `I2C2`: Controller (Master) สำหรับ Loopback (พิน Morpho: `PF1` SCL, `PF0` SDA)
+1. **Zephyr RTOS Firmware บน STM32H563ZI:**
    * [src/main.c](file:///Users/pongpipat/hil/src/main.c):
-     * Background RTOS Thread คำนวณความดัน และอัปเดตลง EEPROM Target Memory ผ่าน `eeprom_target_write_data()`
-     * ฟังก์ชัน I2C Master-to-Slave Loopback
-     * คำสั่ง Zephyr Shell (`hil status`, `hil set_pressure`, `hil inject_leak`, `hil loopback`) ตอบกลับเป็น JSON
-2. **การคอมไพล์ (Build Validation):**
-   * แก้ไข Warning `-Wdouble-promotion` ด้วย Explicit Double Cast
-   * คอมไพล์ผ่านสมบูรณ์ **0 Errors, 0 Warnings** (Binary: `build/zephyr/zephyr.elf`)
-3. **ระบบทดสอบฝั่ง Host (Pytest Framework & Reporting):**
-   * [requirements.txt](file:///Users/pongpipat/hil/requirements.txt): กำหนด dependencies (`pytest`, `pyserial`)
-   * [pytest.ini](file:///Users/pongpipat/hil/pytest.ini): นิยาม Test Markers (`smoke`, `hardware`, `safety`, `ai`)
-   * [tests/test_hil_stm32.py](file:///Users/pongpipat/hil/tests/test_hil_stm32.py): ทดสอบอ่านสถานะ JSON, ปรับค่าความดันคงที่ (Test 1 & 2 PASSED 100%)
-   * [azure-pipelines.yml](file:///Users/pongpipat/hil/azure-pipelines.yml): Azure DevOps CI/CD Pipeline รายงานผลผ่าน JUnit XML (`reports/test_results.xml`) เข้าสู่ Azure Tests Dashboard อัตโนมัติ
-4. **การจัดเก็บเวอร์ชัน (Version Control):**
-   * ทำการ Initial Commit และ Push ขึ้น GitHub เรียบร้อยแล้ว:
-     Repository: [https://github.com/riwrivvriw/kria260-stm32-hil-cicd](https://github.com/riwrivvriw/kria260-stm32-hil-cicd)
+     * พัฒนา I2C Target (Slave) Address `0x58` ด้วย `eeprom_target_write_data()`
+     * พัฒนา Background RTOS Thread คำนวณพลศาสตร์ความดันแบบ Real-time ทุก 50ms (20 Hz)
+     * ใช้ `k_mutex` ปกป้อง Critical Section ป้องกัน Race Condition
+     * พัฒนาคำสั่ง Zephyr Shell (`hil status`, `hil set_pressure`, `hil inject_leak`) ตอบกลับเป็น JSON String
+   * [app.overlay](file:///Users/pongpipat/hil/app.overlay): แมปพิน I2C1 (PB8/PB9) และ I2C2 (PF1/PF0) ที่ความเร็ว Standard Mode 100 kHz
+   * [prj.conf](file:///Users/pongpipat/hil/prj.conf): ปรับแต่ง Kconfig สะอาด ปราศจาก Warning (0 Errors, 0 Warnings)
+   * [zephyrRTOS.md](file:///Users/pongpipat/hil/zephyrRTOS.md): จัดทำคู่มือเจาะลึกอธิบายการทำงานของโค้ดแบบทีละฟังก์ชัน
+2. **Pytest Testbench & Host Communication:**
+   * [tests/test_hil_stm32.py](file:///Users/pongpipat/hil/tests/test_hil_stm32.py):
+     * เพิ่มระบบ **Auto-detect Serial Port** (`/dev/tty.usbmodem*`) ไม่ต้องแก้ไขชื่อพอร์ตเอง
+     * พัฒนา Regex Parser กรอง ANSI Terminal Color ออกจาก JSON อย่างแม่นยำ
+     * ปรับปรุง Robust Timeout Loop ป้องกัน Serial Timing Collision บน macOS
+     * **ผลการรัน: Test 1 (Read Status) และ Test 2 (Set Pressure) PASSED 100%**
+     * Test 3 (Loopback) ถูก Skip ไว้อย่างถูกต้อง เนื่องจากบอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up ภายนอก โดยจะนำไปต่อจริงกับ KR260 ใน Phase 2
+3. **Azure DevOps CI/CD Integration:**
+   * [azure-pipelines.yml](file:///Users/pongpipat/hil/azure-pipelines.yml): ปรับคอนฟิกให้ส่งออกเฉพาะ **JUnit XML** (`reports/test_results.xml`) เข้าสู่ Azure Tests Dashboard โดยตรง
+   * [pytest.ini](file:///Users/pongpipat/hil/pytest.ini): กำหนด Markers (`smoke`, `hardware`, `safety`, `ai`)
 
 ---
 
-## 3. แผนการดำเนินงานระยะถัดไป (Detailed Implementation Roadmap)
+## 3. มีอะไรเปลี่ยนไปจากแผนเดิมบ้าง? (Architectural Refinements)
+
+| หัวข้อ | แผนเดิม | แผนปัจจุบันที่ปรับปรุงแล้ว | เหตุผลทางวิศวกรรม |
+|---|---|---|---|
+| **การส่งวิดีโอเข้า KR260** | ต่อสาย USB-A จาก Laptop เข้า USB-A ของ KR260 ตรงๆ | ใช้ **`v4l2loopback` + GStreamer ผ่าน Ethernet LAN** | พอร์ต USB บน Laptop และ KR260 เป็น USB Host ทั้งคู่ ต่อตรงกันไม่ได้ การส่งผ่าน LAN มีความเสถียรสูงและทำ Automated ใน CI/CD ได้ทันที |
+| **I2C Verification** | พยายามทำ Self-test Loopback บนบอร์ด STM32 ตัวเอง | **ข้าม Loopback บน STM32 แล้วนำไปต่อ I2C ตรงกับ KR260 ใน Phase 2** | บอร์ด Nucleo ไม่มี Onboard Pull-up Resistor ทำให้สัญญาณลอย และหน้าที่จริงของ STM32 คือเป็น Slave ให้ KR260 อ่าน |
+| **Test Reporting** | บันทึกทั้ง CSV และ JUnit XML | **เน้น Pure JUnit XML เพียวๆ** | สอดคล้องกับ Azure DevOps ที่มีแท็บ Tests รองรับ XML โดยตรง ทำให้ Pipeline รวดเร็วและคลีนขึ้น |
+
+---
+
+## 4. สิ่งที่ต้องทำต่อไป (Next Actionable Tasks)
+
+### 🚀 เป้าหมายถัดไป: เข้าสู่ Phase 2 (Kria KR260 Standalone Setup & Interface Bring-up)
 
 ```mermaid
 flowchart TD
-    M1["Phase 1: Flash STM32 & Hardware Loopback Test (ปัจจุบัน)"]
-    M2["Phase 2: Kria KR260 Standalone Setup & Vitis AI Baseline"]
-    M3["Phase 3: Video Injection & Audio DAC Simulation"]
-    M4["Phase 4: Closed-Loop PID & Actuator Feedback Integration"]
-    M5["Phase 5: Azure DevOps Self-Hosted CI/CD Automation"]
+    T1["Task 2.1: บูต KR260 และตั้งค่า Network / SSH Access"]
+    T2["Task 2.2: ต่อสาย I2C ระหว่าง STM32 กับ KR260"]
+    T3["Task 2.3: สแกนและอ่านค่าเซนเซอร์ Address 0x58 จาก KR260"]
+    T4["Task 2.4: ติดตั้ง Vitis AI Runtime และทดสอบรัน Model ตัวอย่าง"]
 
-    M1 --> M2 --> M3 --> M4 --> M5
+    T1 --> T2 --> T3 --> T4
 ```
 
-### Phase 1: Flash STM32 & Physical Loopback Verification (งานปัจจุบัน)
-* [ ] นำบอร์ด STM32H563ZI เสียบสาย USB เข้า Laptop และสั่ง `west flash`
-* [ ] นำสาย Jumper เชื่อมขา I2C1 เข้ากับ I2C2 บนบอร์ด:
-  * `PB8` (I2C1 SCL) <---> `PF1` (I2C2 SCL)
-  * `PB9` (I2C1 SDA) <---> `PF0` (I2C2 SDA)
-* [ ] รันคำสั่ง `pytest tests/test_hil_stm32.py -v` เพื่อตรวจรับรองว่า STM32 ทำงานถูกต้อง 100%
+#### รายละเอียดงานใน Task 2.1 ถึง 2.4:
 
----
-
-### Phase 2: Kria KR260 Standalone Setup & Vitis AI Baseline
-* [ ] ติดตั้ง Kria Ubuntu 22.04 LTS หรือ PetaLinux บน KR260
-* [ ] ตั้งค่า Static IP / DHCP และเปิด SSH ให้ Laptop สามารถเข้าถึงได้
-* [ ] ทดสอบรัน Vitis AI DPU Runtime ด้วยโมเดลทดสอบพื้นฐาน (ResNet หรือ YOLO)
-* [ ] เขียน Script ฝั่ง KR260 สำหรับอ่าน I2C Bus (`i2c-tools` / `i2cget -y <bus> 0x58 0x02 w`)
-
----
-
-### Phase 3: Video Injection & Audio (Leakage Sound) Simulation
-* [ ] **Video Injection Strategy (สำหรับตรวจจับ GI Open/Closed):**
-  * ติดตั้ง `v4l2loopback` บน KR260 เพื่อสร้างอุปกรณ์กล้องเสมือน `/dev/video0`
-  * Laptop ส่งสตรีมไฟล์วิดีโอ Test Dataset เข้า `/dev/video0` บน KR260 ผ่าน Network Socket / GStreamer
-* [ ] **Audio Leakage Simulation (สำหรับตรวจจับเสียงลมรั่ว):**
-  * อัปเดตเฟิร์มแวร์ STM32 เปิดใช้งาน **DAC + DMA**
-  * บันทึกเสียง Leakage Sound (Sine wave 3kHz หรือเสียงลมรั่วจริง) ไว้ใน Flash ของ STM32
-  * ยิงสัญญาณเสียงผ่านขา DAC เข้า ADC/Mic Port ของ KR260 เมื่อได้รับคำสั่ง `hil inject_leak 1`
-
----
-
-### Phase 4: Closed-Loop PID & Actuator Feedback Integration
-* [ ] **Actuator Measurement บน STM32:**
-  * ต่อขา Airpump PWM จาก KR260 เข้า Timer Input Capture ของ STM32 เพื่อวัด Duty Cycle (0-100%)
-  * ต่อขา Solenoid Valve Control เข้า GPIO Input ของ STM32 เพื่อตรวจจับสถานะ เปิด/ปิด
-* [ ] **Closed-Loop Mathematical Model บน STM32:**
-  * อัปเดตสมการฟิสิกส์ใน `src/main.c`:
-    $$P_{t+\Delta t} = P_t + \left( K_{pump} \cdot Duty - K_{valve} \cdot Valve_{open} - K_{leak} \cdot Leak \right) \cdot \Delta t$$
-  * ทำให้ PID Controller บน KR260 ต้องปรับ PWM เพื่อรักษาระดับความดันตามการเปลี่ยนแปลงของ Plant จริง
-
----
-
-### Phase 5: Azure DevOps Self-Hosted CI/CD Automation
-* [ ] ติดตั้ง Azure DevOps Self-Hosted Agent บนเครื่อง Laptop
-* [ ] สร้างไฟล์ `.azure-pipelines.yml`:
-  1. Trigger เมื่อมี PR หรือ Push เข้า branch `main`
-  2. สั่ง build PS Application และ bitstream
-  3. ส่งไฟล์ไปยัง KR260 ผ่าน SCP และสั่ง reload FPGA bitstream ด้วย `xmutil loadapp`
-  4. รัน `pytest tests/` บน Laptop แบบ Headless
-  5. Publish ผลการทดสอบ (JUnit XML) และ Test Artifacts ขึ้น Azure Pipelines
-
----
-
-## 4. ข้อตกลงการเชื่อมต่อฮาร์ดแวร์ (Hardware Interface Contract)
-
-| สัญญาณ | แหล่งกำเนิด (Source) | ปลายทาง (Destination) | โพรโทคอล / ลักษณะสัญญาณ | หมายเหตุ |
-|---|---|---|---|---|
-| **Pressure Sensor** | STM32H5 (PB8/PB9) | KR260 PL/PS I2C | I2C Target (Addr `0x58`, 400kHz) | Reg 0x00: Chip ID, Reg 0x02-0x03: Pressure |
-| **Leakage Mic** | STM32H5 (DAC Out) | KR260 ADC Input | Analog Signal (0 - 3.3V) | จำลองเสียงความถี่การรั่วไหล |
-| **Airpump Control**| KR260 PL Output | STM32H5 Timer Capture | PWM Signal (0 - 100% Duty Cycle) | วัดความเร็วปั๊มเข้าสู่ Plant Model |
-| **Solenoid Valve** | KR260 PL Output | STM32H5 GPIO Input | Digital High/Low (3.3V) | วัดสถานะเปิด/ปิดวาล์วระบายลม |
-| **Camera Feed** | Laptop Host | KR260 PS | GStreamer / v4l2loopback | สตรีมวิดีโอจำลองสภาพลำไส้ |
-| **HIL Commands** | Laptop Host (Pytest)| STM32H5 (ST-Link USB) | UART Shell (115200 8N1) | ส่งคำสั่ง SCPI/JSON-RPC |
+* [ ] **Task 2.1: เตรียมบอร์ด Kria KR260**
+  * แฟลช MicroSD Card ด้วย Kria Ubuntu 22.04 LTS หรือ PetaLinux
+  * เชื่อมต่อสาย LAN และตั้งค่า Static IP หรือจด DHCP IP ของบอร์ด
+  * ทดสอบเชื่อมต่อ SSH จาก Laptop ไปยัง KR260: `ssh ubuntu@<KR260_IP>`
+* [ ] **Task 2.2: เชื่อมต่อสายสัญญาณ I2C ระหว่าง STM32 กับ KR260**
+  * ต่อสาย Jumper 3 เส้น:
+    1. **SCL:** พิน `PB8` (STM32 Arduino D15) $\longleftrightarrow$ ขา SCL ของพอร์ต I2C บน KR260 (เช่น RPi Header หรือ PMOD)
+    2. **SDA:** พิน `PB9` (STM32 Arduino D14) $\longleftrightarrow$ ขา SDA ของพอร์ต I2C บน KR260
+    3. **GND:** `GND` ของ STM32 $\longleftrightarrow$ `GND` ของ KR260 *(ห้ามลืมเด็ดขาดเพื่อให้อ้างอิง Ground ร่วมกัน)*
+* [ ] **Task 2.3: ทดสอบการสื่อสาร I2C ข้ามบอร์ด (First Inter-board Handshake)**
+  * รันคำสั่งบน KR260: `sudo i2cdetect -y -r <i2c_bus_num>`
+  * ตรวจสอบว่ามองเห็น Address **`0x58`** บนตารางหรือไม่
+  * ใช้คำสั่ง `sudo i2cget -y <i2c_bus_num> 0x58 0x00` เพื่ออ่าน Chip ID (ต้องได้ค่า `0x58`)
+* [ ] **Task 2.4: ทดสอบ Vitis AI Runtime บน KR260**
+  * ตรวจสอบความพร้อมของ DPU IP Core ด้วยคำสั่ง `xdputil query`
+  * รัน Inference โมเดลทดสอบเพื่อตรวจวัด Latency และ FPS เบื้องต้น
 
 ---
 
 ## 5. คำแนะนำสำหรับ AI ในการเริ่มงานต่อ (Instruction for Next Agent)
 
-เมื่อเริ่ม Turn ใหม่ ให้ปฏิบัติตามแนวทางนี้:
-1. **ตรวจสอบความพร้อมของฮาร์ดแวร์:** ถามผู้ใช้ว่าบอร์ด STM32H563ZI แฟลชผ่านแล้วหรือไม่ และเชื่อมต่อสายพิน Loopback แล้วหรือยัง
-2. **ขยายผลตาม Phase:** หาก Phase 1 เรียบร้อย ให้เริ่มงาน **Phase 2 (KR260 Environment Setup)** หรือเริ่มเพิ่มฟังก์ชัน **DAC / Timer Input Capture** บน STM32
-3. **การรักษาคุณภาพโค้ด:** 
-   * โค้ด C บน STM32 ต้องปฏิบัติตามมาตรฐาน Zephyr RTOS Driver Model
-   * สื่อสาร อธิบาย และ Comment โค้ดเป็น **ภาษาไทย** เสมอ
-   * แสดงวิธีการทำงานของโค้ดให้ผู้ใช้เห็นอย่างชัดเจนตามกฎของระบบ
+เมื่อเริ่ม Turn ถัดไป ให้ดำเนินการดังนี้:
+1. **ตรวจสอบความพร้อมของบอร์ด Kria KR260:** สอบถามผู้ใช้ว่ามีบอร์ด KR260 อยู่ข้างตัวและเปิดเครื่องบูตติดแล้วหรือไม่
+2. **ชี้เป้า Pinout บน KR260:** แนะนำตำแหน่งขา I2C และ Ground บนบอร์ด KR260 (เช่น ขา Raspberry Pi Header Pin 3 SDA, Pin 5 SCL, Pin 6 GND) เพื่อให้ผู้ใช้ต่อสายเข้ากับ STM32 ได้อย่างถูกต้อง
+3. **สร้าง Test Suite ชุดที่ 2:** สร้างไฟล์ `tests/test_02_kr260_interfaces.py` สำหรับทดสอบ SSH และอ่าน I2C จาก KR260 ผ่าน Pytest บน Laptop
