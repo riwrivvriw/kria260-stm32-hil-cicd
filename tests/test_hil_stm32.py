@@ -7,10 +7,14 @@ import pytest
 import serial
 import json
 import time
+import re
 
-# กำหนด Serial Port ของ ST-Link / USB-C บน Mac (แก้ตาม port จริง เช่น /dev/tty.usbmodem...)
-SERIAL_PORT = "/dev/tty.usbmodem14103"
+# กำหนด Serial Port ของ ST-Link / USB-C บน Mac
+SERIAL_PORT = "/dev/tty.usbmodem103"
 BAUDRATE = 115200
+
+# Regex สำหรับลบ ANSI Escape Sequences (รหัสสีของ Terminal)
+ANSI_REGEX = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 
 class STM32HILClient:
@@ -20,19 +24,35 @@ class STM32HILClient:
         # เคลียร์ buffer เริ่มต้น
         self.ser.reset_input_buffer()
         self.ser.write(b"\n")
+        time.sleep(0.1)
+        self.ser.reset_input_buffer()
 
     def send_cmd(self, cmd: str) -> str:
-        """ส่งคำสั่งไปยัง Zephyr Shell และรอรับบรรทัดผลลัพธ์"""
+        """ส่งคำสั่งไปยัง Zephyr Shell และอ่านผลลัพธ์ทั้งหมดกลับมา"""
         self.ser.reset_input_buffer()
         self.ser.write(f"{cmd}\n".encode())
-        time.sleep(0.1)
+        time.sleep(0.15)  # รอให้ STM32 ประมวลผลและตอบกลับ
 
-        output = []
+        lines = []
         while self.ser.in_waiting > 0:
-            line = self.ser.readline().decode(errors="ignore").strip()
-            if line and not line.startswith("hil:~$") and cmd not in line:
-                output.append(line)
-        return "\n".join(output)
+            raw_line = self.ser.readline().decode(errors="ignore")
+            # ลบ ANSI Escape Code
+            clean_line = ANSI_REGEX.sub('', raw_line).strip()
+            if clean_line and not clean_line.startswith("hil:~$") and cmd not in clean_line:
+                lines.append(clean_line)
+
+        return "\n".join(lines)
+
+    def send_cmd_json(self, cmd: str) -> dict:
+        """ส่งคำสั่งและค้นหา JSON Object ในข้อความตอบกลับโดยเฉพาะ"""
+        raw_output = self.send_cmd(cmd)
+        
+        # ค้นหาข้อความที่อยู่ในรูปแบบ JSON {...}
+        json_match = re.search(r'\{.*\}', raw_output)
+        if not json_match:
+            raise ValueError(f"No JSON found in response:\n{raw_output}")
+            
+        return json.loads(json_match.group(0))
 
     def close(self):
         self.ser.close()
@@ -47,8 +67,7 @@ def hil():
 
 def test_01_read_hil_status(hil):
     """ทดสอบอ่านสถานะ JSON จาก STM32"""
-    raw_output = hil.send_cmd("hil status")
-    data = json.loads(raw_output)
+    data = hil.send_cmd_json("hil status")
 
     assert data["chip_id"] == "0x58", f"Chip ID mismatch: {data['chip_id']}"
     assert (
@@ -60,20 +79,24 @@ def test_02_set_manual_pressure(hil):
     """ทดสอบสั่งปรับค่าความดันคงที่ และตรวจสอบว่าค่าอัปเดตจริง"""
     hil.send_cmd("hil set_pressure 125.50")
 
-    raw_output = hil.send_cmd("hil status")
-    data = json.loads(raw_output)
+    data = hil.send_cmd_json("hil status")
 
-    assert abs(data["pressure_kpa"] - 125.50) < 0.1, "Pressure set value mismatch"
+    assert abs(data["pressure_kpa"] - 125.50) < 0.1, f"Pressure set value mismatch: {data['pressure_kpa']}"
     assert data["auto"] is False, "Auto simulation should be disabled"
 
 
 def test_03_i2c_loopback_self_test(hil):
     """
     ทดสอบ I2C Master-to-Slave Loopback บนบอร์ด STM32
-    (เมื่อต่อสายจิ้ม SCL/SDA ของ I2C1 เข้ากับ I2C2)
+    (ต้องต่อสาย Jumper: I2C1 PB8/PB9 เข้ากับ I2C2 PF1/PF0)
     """
-    raw_output = hil.send_cmd("hil loopback")
-    data = json.loads(raw_output)
+    data = hil.send_cmd_json("hil loopback")
+
+    if data.get("loopback") == "FAIL" and data.get("error_code") == -5:
+        pytest.fail(
+            "I2C Loopback Failed with Error -5 (-EIO / NACK): "
+            "กรุณาตรวจสอบว่าได้นำสาย Jumper เชื่อมพิน I2C1 (PB8/PB9) เข้ากับ I2C2 (PF1/PF0) แล้วหรือยัง"
+        )
 
     assert data["loopback"] == "PASS", f"I2C Loopback test failed: {data}"
     assert data["read_chip_id"] == "0x58"
