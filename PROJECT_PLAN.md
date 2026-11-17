@@ -74,6 +74,10 @@
      * ออกแบบโมดูล SystemVerilog ขับปั๊มลมความละเอียด 10-bit (0 - 1023 ระดับ)
      * รองรับ Clock Prescaler ปรับความถี่ตั้งแต่ 1 kHz ถึง 50 kHz (ค่าเริ่มต้น 9.76 kHz)
      * **ฟีเจอร์ความปลอดภัยระดับเครื่องมือแพทย์:** มีขา `emergency_stop` ทางฮาร์ดแวร์ ตัดไฟปั๊มเหลือ 0% ทันทีในระดับ Logic Gate (Latency $< 10\text{ ns}$)
+   * [hardware/rtl/axi_pwm_controller.sv](file:///Users/pongpipat/hil/hardware/rtl/axi_pwm_controller.sv):
+     * โมดูล AXI4-Lite Slave Interface Wrapper ครอบตัว PWM Controller ทำให้ CPU/Linux (PS) สั่งงานและอ่านค่าได้ผ่าน Memory-Mapped Registers (Offset 0x00, 0x04, 0x08, 0x0C)
+   * [hardware/xdc/kr260_constraints.xdc](file:///Users/pongpipat/hil/hardware/xdc/kr260_constraints.xdc):
+     * ไฟล์ Physical Constraints แมปพินจริงบนบอร์ด KR260 (I2C RPi Header Pin 3/5, PWM PMOD1 Pin 1, Solenoid PMOD1 Pin 2) ที่ระดับไฟ 3.3V LVCMOS
    * [hardware/sim/tb_pwm_controller.sv](file:///Users/pongpipat/hil/hardware/sim/tb_pwm_controller.sv):
      * Testbench จำลองการทำงานใน Vivado Simulator (Reset $\rightarrow$ 25% Duty $\rightarrow$ 75% Duty $\rightarrow$ Emergency Stop Assertion $\rightarrow$ Recovery)
 
