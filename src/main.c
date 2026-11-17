@@ -1,8 +1,12 @@
 /**
  * @file main.c
  * @brief STM32H5 HIL Plant Simulator (Zephyr RTOS)
- * @details ทำหน้าที่เป็นทั้ง I2C Target (Slave), Closed-Loop Pressure Plant Simulator,
- *          และรับสัญญาณ Airpump PWM จากบอร์ด Kria KR260 เพื่อคำนวณความดันแบบ Real-Time
+ * @details จำลองสภาพแวดล้อมทางเดินอาหาร (GI Plant & Insufflator Simulation)
+ *          - รับคำสั่ง Airpump PWM และ GPIO Command จาก Kria KR260
+ *          - จำลองแรงดันก๊าซผ่านบัส I2C Target (EEPROM Addr 0x58)
+ *          - ขับสัญญาณเสียงลมรั่ว AC Audio Waveform ผ่าน DAC
+ *          - ควบคุม Finite State Machine สอดคล้องกับภาพกล้องตรวจ (Mock Camera Stream)
+ *          - รองรับ UART Test API สำหรับ Host CI/CD Testbench
  */
 
 #include <zephyr/kernel.h>
@@ -13,43 +17,52 @@
 #include <zephyr/logging/log.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "kr260/kr260_pwm_receiver.h"
+#include "gi_state_machine.h"
+#include "audio_leak.h"
+#include "io_controller.h"
 
-LOG_MODULE_REGISTER(hil_simulator, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(hil_main, LOG_LEVEL_INF);
 
 /* -------------------------------------------------------------------------- */
-/* นิยาม Register Map ของ Sensor จำลอง                                         */
+/* นิยาม Register Map ของ I2C Target (0x58)                                    */
 /* -------------------------------------------------------------------------- */
 #define TARGET_I2C_ADDR       0x58
-#define REG_CHIP_ID           0x00
-#define REG_STATUS            0x01
-#define REG_PRESSURE_MSB      0x02
-#define REG_PRESSURE_LSB      0x03
+#define REG_CHIP_ID           0x00  /* 0x58 */
+#define REG_STATUS            0x01  /* Bitfield Status */
+#define REG_PRESSURE_MSB      0x02  /* Pressure in kPa * 100 (MSB) */
+#define REG_PRESSURE_LSB      0x03  /* Pressure in kPa * 100 (LSB) */
+#define REG_GI_STATE          0x04  /* State ID: 0..5 */
+#define REG_PUMP_DUTY         0x05  /* Duty 0-100% */
+#define REG_TARGET_PRESSURE   0x06  /* Target Pressure Setpoint */
+#define REG_IO_STATUS         0x07  /* Bit 0: Start/Stop, Bit 1: E-Stop, Bit 2: Valve */
 #define BUFFER_SIZE           256
 
-/* Buffer สำหรับเก็บข้อมูล I2C Target */
+/* Status Bits */
+#define STATUS_BIT_LEAK       (1 << 0)
+#define STATUS_BIT_VALVE      (1 << 1)
+#define STATUS_BIT_PUMPING    (1 << 2)
+#define STATUS_BIT_AUDIO      (1 << 3)
+#define STATUS_BIT_CAMERA     (1 << 4)
+#define STATUS_BIT_ESTOP      (1 << 5)
+
 static uint8_t g_i2c_buffer[BUFFER_SIZE];
-static struct k_mutex g_buffer_mutex;
+static struct k_mutex g_i2c_mutex;
 static const struct device *g_target_dev;
 
-/* ตัวแปรสถานะระบบ Plant Simulation */
-static float g_current_pressure_kpa = 101.325f; // ค่าความดันเริ่มต้น (1 atm = 101.325 kPa)
-static bool  g_leak_injected = false;           // จำลองสภาวะลมรั่ว
-static bool  g_auto_simulation = true;          // เปิด/ปิด การคำนวณฟิสิกส์อัตโนมัติ
-
-/* ฟังก์ชันช่วยอัปเดตลง EEPROM Target Hardware */
 static void update_eeprom_memory(void)
 {
     if (g_target_dev && device_is_ready(g_target_dev)) {
-        eeprom_target_write_data(g_target_dev, 0, g_i2c_buffer, 4);
+        eeprom_target_write_data(g_target_dev, 0, g_i2c_buffer, 8);
     }
 }
 
 /* -------------------------------------------------------------------------- */
-/* Thread จำลองฟิสิกส์ความดัน (Closed-Loop Plant Model Simulation Thread)       */
+/* Thread ประมวลผลจำลองระบบและปรับปรุงค่า Register (20 Hz / 50ms)              */
 /* -------------------------------------------------------------------------- */
-#define SIM_STACK_SIZE 1024
+#define SIM_STACK_SIZE 2048
 #define SIM_PRIORITY   7
 
 static void plant_sim_thread_entry(void *p1, void *p2, void *p3)
@@ -58,50 +71,61 @@ static void plant_sim_thread_entry(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    LOG_INF("Closed-Loop Plant Simulation Thread Started.");
-    const float dt = 0.05f;          // คาบเวลาการคำนวณ 50ms (0.05 วินาที)
-    const float k_pump = 25.0f;      // อัตราการเพิ่มความดันเมื่อปั๊มทำงาน 100% (kPa/s)
-    const float k_leak = 18.0f;      // อัตราการระบายความดันเมื่อเกิดรอยรั่ว
-    const float p_ambient = 101.325f;// ความดันบรรยากาศ
+    LOG_INF("HIL Plant Simulator Core Thread Started.");
+    const float dt = 0.05f;
 
     while (1) {
-        if (g_auto_simulation) {
-            // อ่านค่า Duty Cycle ปัจจุบันที่ KR260 ส่งมา (0.0 - 1.0)
-            float pump_duty = kr260_pwm_get_duty_cycle();
+        // 1. อ่านอินพุตจาก KR260 (PWM และ GPIO)
+        float pump_duty = kr260_pwm_get_duty_cycle();
+        uint32_t pwm_freq = kr260_pwm_get_frequency_hz();
+        bool start_stop_io = io_controller_get_start_stop();
+        bool estop_io = io_controller_get_estop();
+        bool solenoid_cmd = io_controller_get_solenoid_valve();
 
-            k_mutex_lock(&g_buffer_mutex, K_FOREVER);
-
-            // สมการพลศาสตร์ Closed-Loop: dP/dt = (K_pump * Duty) - (K_leak * Leak)
-            float dp = (k_pump * pump_duty) * dt;
-
-            if (g_leak_injected) {
-                // หากมีการรั่ว ความดันจะลดลงอย่างรวดเร็วสู่ระดับบรรยากาศ
-                dp -= k_leak * (g_current_pressure_kpa - p_ambient) * dt;
-            } else if (pump_duty < 0.02f && g_current_pressure_kpa > p_ambient) {
-                // หากปั๊มดับและไม่มีการรั่ว ความดันจะค่อยๆ คลายตัวลงช้าๆ
-                dp -= 0.5f * (g_current_pressure_kpa - p_ambient) * dt;
-            }
-
-            g_current_pressure_kpa += dp;
-            if (g_current_pressure_kpa < p_ambient) {
-                g_current_pressure_kpa = p_ambient;
-            }
-
-            // แปลงค่าความดันเป็น Fixed-point 16-bit (คูณ 100 เพื่อเก็บทศนิยม 2 ตำแหน่ง)
-            uint16_t raw_val = (uint16_t)(g_current_pressure_kpa * 100.0f);
-
-            // อัปเดตข้อมูลลง Register Buffer ให้ KR260 เข้ามาอ่านผ่าน I2C
-            g_i2c_buffer[REG_CHIP_ID]      = TARGET_I2C_ADDR;
-            g_i2c_buffer[REG_STATUS]       = g_leak_injected ? 0x01 : 0x00;
-            g_i2c_buffer[REG_PRESSURE_MSB] = (raw_val >> 8) & 0xFF;
-            g_i2c_buffer[REG_PRESSURE_LSB] = raw_val & 0xFF;
-
-            update_eeprom_memory();
-
-            k_mutex_unlock(&g_buffer_mutex);
+        if (solenoid_cmd) {
+            gi_state_machine_set_solenoid(true);
         }
 
-        // วนลูปคำนวณทุกๆ 50ms (20 Hz)
+        // 2. อัปเดต Finite State Machine
+        gi_state_machine_update(dt, pump_duty, pwm_freq, start_stop_io, estop_io);
+
+        // 3. อ่านสถานะปัจจุบันของระบบ
+        gi_system_status_t sys_stat;
+        gi_state_machine_get_status(&sys_stat);
+
+        // 4. ซิงค์สัญญาณเสียง AC Audio Leak Generator
+        audio_leak_set_enable(sys_stat.audio_leak_active);
+
+        // 5. แปลงข้อมูลลง I2C Target Register Buffer
+        k_mutex_lock(&g_i2c_mutex, K_FOREVER);
+
+        uint16_t raw_pressure = (uint16_t)(sys_stat.current_pressure_kpa * 100.0f);
+        uint8_t status_flags = 0;
+        if (sys_stat.leak_active)        status_flags |= STATUS_BIT_LEAK;
+        if (sys_stat.solenoid_valve_open) status_flags |= STATUS_BIT_VALVE;
+        if (sys_stat.pump_duty > 0.05f)  status_flags |= STATUS_BIT_PUMPING;
+        if (sys_stat.audio_leak_active)  status_flags |= STATUS_BIT_AUDIO;
+        if (sys_stat.state != GI_STATE_IDLE) status_flags |= STATUS_BIT_CAMERA;
+        if (sys_stat.estop_active)       status_flags |= STATUS_BIT_ESTOP;
+
+        uint8_t io_flags = 0;
+        if (sys_stat.start_stop_io)      io_flags |= (1 << 0);
+        if (sys_stat.estop_active)       io_flags |= (1 << 1);
+        if (sys_stat.solenoid_valve_open) io_flags |= (1 << 2);
+
+        g_i2c_buffer[REG_CHIP_ID]         = TARGET_I2C_ADDR;
+        g_i2c_buffer[REG_STATUS]          = status_flags;
+        g_i2c_buffer[REG_PRESSURE_MSB]    = (raw_pressure >> 8) & 0xFF;
+        g_i2c_buffer[REG_PRESSURE_LSB]    = raw_pressure & 0xFF;
+        g_i2c_buffer[REG_GI_STATE]        = (uint8_t)sys_stat.state;
+        g_i2c_buffer[REG_PUMP_DUTY]       = (uint8_t)(sys_stat.pump_duty * 100.0f);
+        g_i2c_buffer[REG_TARGET_PRESSURE] = (uint8_t)sys_stat.target_pressure_kpa;
+        g_i2c_buffer[REG_IO_STATUS]       = io_flags;
+
+        update_eeprom_memory();
+
+        k_mutex_unlock(&g_i2c_mutex);
+
         k_msleep(50);
     }
 }
@@ -111,22 +135,21 @@ K_THREAD_DEFINE(sim_thread_id, SIM_STACK_SIZE,
                 SIM_PRIORITY, 0, 0);
 
 /* -------------------------------------------------------------------------- */
-/* ฟังก์ชันทดสอบ I2C Loopback (Master อ่าน Slave ตัวเอง)                        */
+/* ฟังก์ชัน I2C Loopback Self-test                                             */
 /* -------------------------------------------------------------------------- */
 static int run_i2c_loopback_test(uint16_t *read_raw_pressure, uint8_t *read_chip_id)
 {
     const struct device *i2c_master = DEVICE_DT_GET(DT_ALIAS(hil_master));
-
     if (!device_is_ready(i2c_master)) {
         LOG_ERR("I2C Master device (hil-master) is not ready!");
         return -ENODEV;
     }
 
     uint8_t reg_addr = REG_CHIP_ID;
-    uint8_t rx_data[4] = {0};
+    uint8_t rx_data[8] = {0};
 
-    int ret = i2c_write_read(i2c_master, TARGET_I2C_ADDR, 
-                             &reg_addr, 1, 
+    int ret = i2c_write_read(i2c_master, TARGET_I2C_ADDR,
+                             &reg_addr, 1,
                              rx_data, sizeof(rx_data));
     if (ret != 0) {
         LOG_ERR("I2C Loopback Transaction Failed (err: %d)", ret);
@@ -139,27 +162,65 @@ static int run_i2c_loopback_test(uint16_t *read_raw_pressure, uint8_t *read_chip
 }
 
 /* -------------------------------------------------------------------------- */
-/* Zephyr Shell Commands (รับคำสั่งจาก Pytest ผ่าน USB Serial)                */
+/* Zephyr Shell Commands (UART Test API สำหรับ Host Laptop)                   */
 /* -------------------------------------------------------------------------- */
 static int cmd_hil_status(const struct shell *sh, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
 
-    float pump_duty = kr260_pwm_get_duty_cycle();
-    uint32_t pwm_freq = kr260_pwm_get_frequency_hz();
+    gi_system_status_t s;
+    gi_state_machine_get_status(&s);
 
-    k_mutex_lock(&g_buffer_mutex, K_FOREVER);
-    // รายงานสถานะ JSON พร้อมค่า PWM Duty Cycle ที่วัดได้จาก KR260 แบบสดๆ
-    shell_print(sh, "{\"chip_id\": \"0x%02X\", \"pressure_kpa\": %.2f, \"pump_duty\": %.2f, \"pwm_freq_hz\": %u, \"leak\": %s, \"auto\": %s}",
-                g_i2c_buffer[REG_CHIP_ID],
-                (double)g_current_pressure_kpa,
-                (double)pump_duty,
-                pwm_freq,
-                g_leak_injected ? "true" : "false",
-                g_auto_simulation ? "true" : "false");
-    k_mutex_unlock(&g_buffer_mutex);
+    k_mutex_lock(&g_i2c_mutex, K_FOREVER);
+    // รายงานผลเป็น JSON Format ละเอียดสำหรับ Pytest Framework
+    shell_print(sh,
+        "{\"chip_id\": \"0x%02X\", \"state\": \"%s\", \"state_id\": %d, "
+        "\"pressure_kpa\": %.2f, \"target_kpa\": %.2f, \"pump_duty\": %.2f, \"pwm_freq_hz\": %u, "
+        "\"leak\": %s, \"valve_open\": %s, \"audio_active\": %s, "
+        "\"start_stop_io\": %s, \"estop\": %s, \"camera_scene\": \"%s\", \"auto\": %s}",
+        g_i2c_buffer[REG_CHIP_ID],
+        gi_state_to_str(s.state),
+        (int)s.state,
+        (double)s.current_pressure_kpa,
+        (double)s.target_pressure_kpa,
+        (double)s.pump_duty,
+        s.pwm_freq_hz,
+        s.leak_active ? "true" : "false",
+        s.solenoid_valve_open ? "true" : "false",
+        s.audio_leak_active ? "true" : "false",
+        s.start_stop_io ? "true" : "false",
+        s.estop_active ? "true" : "false",
+        s.camera_scene,
+        s.auto_simulation ? "true" : "false");
+    k_mutex_unlock(&g_i2c_mutex);
 
+    return 0;
+}
+
+static int cmd_hil_set_state(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil set_state <IDLE|INSUFFLATE|INSPECT|LEAK|DEFLATE|ESTOP>");
+        return -EINVAL;
+    }
+
+    const char *state_arg = argv[1];
+    gi_state_t target_state = GI_STATE_IDLE;
+
+    if (strcasecmp(state_arg, "IDLE") == 0)             target_state = GI_STATE_IDLE;
+    else if (strcasecmp(state_arg, "INSUFFLATE") == 0)  target_state = GI_STATE_INSUFFLATION;
+    else if (strcasecmp(state_arg, "INSPECT") == 0)     target_state = GI_STATE_STABLE_INSPECTION;
+    else if (strcasecmp(state_arg, "LEAK") == 0)        target_state = GI_STATE_LEAK_EVENT;
+    else if (strcasecmp(state_arg, "DEFLATE") == 0)     target_state = GI_STATE_DEFLATION_STOP;
+    else if (strcasecmp(state_arg, "ESTOP") == 0)       target_state = GI_STATE_EMERGENCY_STOP;
+    else {
+        shell_error(sh, "Unknown state: %s", state_arg);
+        return -EINVAL;
+    }
+
+    gi_state_machine_set_state(target_state);
+    shell_print(sh, "OK: State transitioned to %s", gi_state_to_str(target_state));
     return 0;
 }
 
@@ -171,16 +232,7 @@ static int cmd_hil_set_pressure(const struct shell *sh, size_t argc, char **argv
     }
 
     float new_pressure = strtof(argv[1], NULL);
-    k_mutex_lock(&g_buffer_mutex, K_FOREVER);
-    g_auto_simulation = false; // ปิดการคำนวณอัตโนมัติ เพื่อตรึงค่าตามที่เทสต์เคสต้องการ
-    g_current_pressure_kpa = new_pressure;
-    
-    uint16_t raw_val = (uint16_t)(g_current_pressure_kpa * 100.0f);
-    g_i2c_buffer[REG_PRESSURE_MSB] = (raw_val >> 8) & 0xFF;
-    g_i2c_buffer[REG_PRESSURE_LSB] = raw_val & 0xFF;
-    update_eeprom_memory();
-    k_mutex_unlock(&g_buffer_mutex);
-
+    gi_state_machine_set_fixed_pressure(new_pressure);
     shell_print(sh, "OK: Pressure set to %.2f kPa (Auto-sim disabled)", (double)new_pressure);
     return 0;
 }
@@ -193,13 +245,75 @@ static int cmd_hil_inject_leak(const struct shell *sh, size_t argc, char **argv)
     }
 
     int leak_flag = atoi(argv[1]);
-    k_mutex_lock(&g_buffer_mutex, K_FOREVER);
-    g_leak_injected = (leak_flag != 0);
-    g_auto_simulation = true;
-    update_eeprom_memory();
-    k_mutex_unlock(&g_buffer_mutex);
+    gi_state_machine_inject_leak(leak_flag != 0);
+    shell_print(sh, "OK: Leak injection set to %d", leak_flag);
+    return 0;
+}
 
-    shell_print(sh, "OK: Leak state updated to %d", leak_flag);
+static int cmd_hil_audio_leak(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil audio_leak <0|1>");
+        return -EINVAL;
+    }
+
+    int audio_flag = atoi(argv[1]);
+    audio_leak_set_enable(audio_flag != 0);
+    shell_print(sh, "OK: AC Audio Leak set to %d", audio_flag);
+    return 0;
+}
+
+static int cmd_hil_start_stop(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil set_start_stop <0|1>");
+        return -EINVAL;
+    }
+
+    int val = atoi(argv[1]);
+    io_controller_set_mock_start_stop(val != 0);
+    shell_print(sh, "OK: Start/Stop IO set to %d", val);
+    return 0;
+}
+
+static int cmd_hil_estop(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil set_estop <0|1>");
+        return -EINVAL;
+    }
+
+    int val = atoi(argv[1]);
+    io_controller_set_mock_estop(val != 0);
+    shell_print(sh, "OK: E-Stop IO set to %d", val);
+    return 0;
+}
+
+static int cmd_hil_solenoid(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil set_solenoid <0|1>");
+        return -EINVAL;
+    }
+
+    int val = atoi(argv[1]);
+    gi_state_machine_set_solenoid(val != 0);
+    shell_print(sh, "OK: Solenoid Valve set to %d", val);
+    return 0;
+}
+
+static int cmd_hil_reset(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    gi_state_machine_reset();
+    audio_leak_set_enable(false);
+    io_controller_set_mock_start_stop(false);
+    io_controller_set_mock_estop(false);
+    io_controller_set_mock_solenoid(false);
+
+    shell_print(sh, "OK: HIL System Simulator fully reset to IDLE");
     return 0;
 }
 
@@ -224,16 +338,22 @@ static int cmd_hil_loopback(const struct shell *sh, size_t argc, char **argv)
     return ret;
 }
 
-/* ลงทะเบียนคำสั่งย่อยเข้ากลุ่มคำสั่ง "hil" */
+/* ลงทะเบียนคำสั่ง CLI ย่อย */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
-    SHELL_CMD(status, NULL, "Get current HIL plant status (JSON)", cmd_hil_status),
-    SHELL_CMD(set_pressure, NULL, "Set fixed pressure value", cmd_hil_set_pressure),
-    SHELL_CMD(inject_leak, NULL, "Inject/Clear air leakage state (0 or 1)", cmd_hil_inject_leak),
-    SHELL_CMD(loopback, NULL, "Execute I2C Master-to-Slave loopback test", cmd_hil_loopback),
+    SHELL_CMD(status, NULL, "Get full HIL plant status (JSON)", cmd_hil_status),
+    SHELL_CMD(set_state, NULL, "Force FSM state <IDLE|INSUFFLATE|INSPECT|LEAK|DEFLATE|ESTOP>", cmd_hil_set_state),
+    SHELL_CMD(set_pressure, NULL, "Set fixed pressure value in kPa", cmd_hil_set_pressure),
+    SHELL_CMD(inject_leak, NULL, "Inject or clear gas leak <0|1>", cmd_hil_inject_leak),
+    SHELL_CMD(audio_leak, NULL, "Control AC Audio Leak Generator <0|1>", cmd_hil_audio_leak),
+    SHELL_CMD(set_start_stop, NULL, "Set Start/Stop IO command <0|1>", cmd_hil_start_stop),
+    SHELL_CMD(set_estop, NULL, "Set Emergency Stop IO <0|1>", cmd_hil_estop),
+    SHELL_CMD(set_solenoid, NULL, "Set Solenoid Purge Valve <0|1>", cmd_hil_solenoid),
+    SHELL_CMD(reset, NULL, "Reset plant simulator to default IDLE", cmd_hil_reset),
+    SHELL_CMD(loopback, NULL, "Execute I2C loopback test", cmd_hil_loopback),
     SHELL_SUBCMD_SET_END
 );
 
-SHELL_CMD_REGISTER(hil, &sub_hil, "HIL Plant Controller Commands", NULL);
+SHELL_CMD_REGISTER(hil, &sub_hil, "HIL GI Simulator Testbench API", NULL);
 
 /* -------------------------------------------------------------------------- */
 /* ฟังก์ชัน Main เริ่มต้นระบบ                                                  */
@@ -242,16 +362,22 @@ int main(void)
 {
     LOG_INF("==================================================");
     LOG_INF(" STM32H5 HIL Plant Simulator Initializing...     ");
+    LOG_INF(" GI Insufflator, Audio Leak & Camera Mock Core    ");
     LOG_INF(" OS: Zephyr RTOS | Target: Nucleo-H563ZI         ");
     LOG_INF("==================================================");
 
-    k_mutex_init(&g_buffer_mutex);
+    k_mutex_init(&g_i2c_mutex);
 
-    // กำหนดค่าเริ่มต้นให้กับ Buffer
+    // 1. เริ่มต้น Subsystems ทั้งหมด
+    gi_state_machine_init();
+    audio_leak_init();
+    io_controller_init();
+
+    // 2. กำหนดค่า Buffer เริ่มต้น
     g_i2c_buffer[REG_CHIP_ID] = TARGET_I2C_ADDR;
     g_i2c_buffer[REG_STATUS]  = 0x00;
 
-    // 1. เชื่อมต่อ Buffer เข้ากับ I2C Target EEPROM Driver
+    // 3. ผูก I2C Target EEPROM Device
     g_target_dev = DEVICE_DT_GET(DT_ALIAS(hil_target));
     if (!device_is_ready(g_target_dev)) {
         LOG_ERR("Target device (hil-target) is NOT ready!");
@@ -259,14 +385,14 @@ int main(void)
     }
     update_eeprom_memory();
 
-    // 2. เริ่มต้นระบบตรวจวัดสัญญาณ PWM จาก KR260
+    // 4. เริ่มต้น PWM Receiver จาก KR260
     int ret = kr260_pwm_receiver_init();
     if (ret != 0) {
         LOG_WRN("KR260 PWM Receiver init returned %d (Pin may not be driven yet)", ret);
     }
 
     LOG_INF("I2C Target registered at address 0x%02X successfully.", TARGET_I2C_ADDR);
-    LOG_INF("Zephyr Shell ready. Type 'hil status' to inspect.");
+    LOG_INF("Zephyr Shell ready. Type 'hil status' to inspect system.");
 
     return 0;
 }

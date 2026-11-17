@@ -1,19 +1,28 @@
 /*
  * DeviceTree Overlay สำหรับ STM32H563ZI (Nucleo-H563ZI)
  *
- * 1. I2C1: ทำหน้าที่เป็น Target (Slave) จำลอง Sensor Registers ที่ Address 0x58
+ * 1. I2C1: Target (Slave) จำลอง Sensor Registers ที่ Address 0x58
  *          (พิน Arduino D15/D14: PB8 = SCL, PB9 = SDA)
- * 2. I2C2: ทำหน้าที่เป็น Controller (Master) ใช้สำหรับทดสอบ Loopback บนบอร์ดตัวเอง
+ * 2. I2C2: Controller (Master) ใช้สำหรับทดสอบ Loopback บนบอร์ดตัวเอง
  *          (พิน Morpho Header: PF1 = SCL, PF0 = SDA)
  * 3. KR260 PWM Input: รับสัญญาณ Airpump PWM จาก KR260 (ขา PMOD1 Pin 1)
  *          (พิน Arduino D2: PF15 พร้อม Internal Pull-Down)
+ * 4. KR260 Control IOs:
+ *          - Start/Stop Command: พิน Arduino D3 (PB13)
+ *          - Solenoid Purge Valve Command: พิน Arduino D4 (PE11)
+ *          - Emergency Stop Input: พิน Arduino D5 (PE9)
+ * 5. Leak Audio AC Output:
+ *          - Analog AC Leak Sound (DAC1 Out1): พิน Arduino A2 (PA4)
  */
 
 / {
     aliases {
-        hil-target = &pressure_target;
-        hil-master = &i2c2;
-        kr260-pwm  = &kr260_pwm_input;
+        hil-target        = &pressure_target;
+        hil-master        = &i2c2;
+        kr260-pwm         = &kr260_pwm_input;
+        kr260-start-stop  = &kr260_start_stop_input;
+        kr260-solenoid    = &kr260_solenoid_input;
+        kr260-estop       = &kr260_estop_input;
     };
 
     kr260_hil_pins {
@@ -22,23 +31,35 @@
             gpios = <&gpiof 15 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
             label = "KR260 Airpump PWM Capture Input";
         };
+        kr260_start_stop_input: start_stop_in {
+            gpios = <&gpiob 13 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+            label = "KR260 Start/Stop Command Input";
+        };
+        kr260_solenoid_input: solenoid_in {
+            gpios = <&gpioe 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+            label = "KR260 Solenoid Valve Control Input";
+        };
+        kr260_estop_input: estop_in {
+            gpios = <&gpioe 9 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+            label = "KR260 Emergency Stop Input";
+        };
     };
 };
 
-/* เปิดใช้งาน GPIOF สำหรับรับสัญญาณ PWM */
-&gpiof {
-    status = "okay";
-};
+/* เปิดใช้งาน GPIO Controllers */
+&gpiob { status = "okay"; };
+&gpioe { status = "okay"; };
+&gpiof { status = "okay"; };
 
 /* I2C1: กำหนดเป็น Target (Slave) */
 &i2c1 {
     status = "okay";
-    clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz สำหรับ Internal Pull-up */
+    clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz */
 
     pressure_target: eeprom_slave@58 {
         compatible = "zephyr,i2c-target-eeprom";
         reg = <0x58>;
-        size = <256>; /* กำหนดขนาด Buffer เสมือนขนาด 256 ไบต์ */
+        size = <256>;
     };
 };
 
@@ -47,5 +68,5 @@
     pinctrl-0 = <&i2c2_scl_pf1 &i2c2_sda_pf0>;
     pinctrl-names = "default";
     status = "okay";
-    clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz สำหรับ Internal Pull-up */
+    clock-frequency = <I2C_BITRATE_STANDARD>;
 };

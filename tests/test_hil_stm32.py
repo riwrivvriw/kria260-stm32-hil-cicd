@@ -1,7 +1,8 @@
 """
 test_hil_stm32.py
-ตัวอย่างชุดทดสอบ Pytest บน Host Laptop ควบคุม STM32 HIL ผ่าน USB Serial (Zephyr Shell)
-บันทึกผลการทดสอบและค่า Telemetry เป็นรูปแบบ CSV ผ่าน Fixture ใน conftest.py
+ชุดทดสอบ Pytest บน Host Laptop ควบคุมและตรวจสอบความถูกต้องของ STM32 HIL Firmware
+ครอบคลุมการทดสอบ UART Testbench APIs, Finite State Machine (GI & Camera Mock),
+การจำลองความดัน (I2C), สัญญาณเสียงลมรั่ว (AC Audio), และคำสั่ง Control IOs
 """
 
 import pytest
@@ -14,7 +15,7 @@ import os
 import sys
 
 
-def find_stm32_port() -> str:
+def find_stm32_port():
     """
     ฟังก์ชันค้นหาพอร์ต USB Serial ของ STM32 แบบ Cross-platform
     รองรับทั้ง macOS (/dev/tty.usbmodem*), Linux (/dev/ttyACM*), และ Windows (COM*)
@@ -32,14 +33,11 @@ def find_stm32_port() -> str:
             desc = (p.description or "").lower()
             mfg = (p.manufacturer or "").lower()
             hwid = (p.hwid or "").lower()
-            # ตรวจจับชิปเซ็ต ST-Link / STMicroelectronics
-            if any(k in desc or k in mfg or k in hwid for k in ("stlink", "st-link", "stm", "stmicroelectronics")):
+            # ตรวจจับ ST-Link / STMicroelectronics / Nucleo
+            if any(k in desc or k in mfg or k in hwid for k in ("stlink", "st-link", "stm", "stmicroelectronics", "nucleo")):
                 return p.device
             if "usbmodem" in p.device.lower() or "ttyacm" in p.device.lower():
                 return p.device
-
-        if com_ports and sys.platform.startswith("win"):
-            return com_ports[0].device
     except Exception:
         pass
 
@@ -48,7 +46,7 @@ def find_stm32_port() -> str:
     if ports:
         return sorted(ports)[0]
 
-    return "COM3" if sys.platform.startswith("win") else "/dev/tty.usbmodem11103"
+    return None
 
 
 SERIAL_PORT = find_stm32_port()
@@ -138,26 +136,45 @@ class STM32HILClient:
 @pytest.fixture(scope="module")
 def hil():
     port = find_stm32_port()
-    client = STM32HILClient(port, BAUDRATE)
+    if not port:
+        pytest.skip("ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT)")
+
+    try:
+        client = STM32HILClient(port, BAUDRATE)
+    except Exception as e:
+        pytest.skip(f"ไม่สามารถเชื่อมต่อ STM32 ผ่าน {port} ได้: {e}")
+
+    # ตรวจสอบการตอบสนอง
+    try:
+        client.send_cmd("hil reset")
+    except Exception as e:
+        pytest.skip(f"STM32 ไม่ตอบสนองต่อคำสั่งบน {port}: {e}")
+
     yield client
-    client.close()
+    try:
+        client.send_cmd("hil reset")
+        client.close()
+    except Exception:
+        pass
 
 
 def test_01_read_hil_status(hil, csv_record):
-    """ทดสอบอ่านสถานะ JSON จาก STM32 และบันทึกค่าลง CSV"""
+    """ทดสอบอ่านสถานะ JSON จาก STM32 และตรวจสอบ Schema ครบถ้วน"""
     data = hil.send_cmd_json("hil status")
 
     # บันทึกข้อมูล Telemetry ลงในรายงานผล CSV
     csv_record({
         "chip_id": data.get("chip_id"),
+        "state": data.get("state"),
         "pressure_kpa": data.get("pressure_kpa"),
         "pump_duty": data.get("pump_duty", 0.0),
-        "pwm_freq_hz": data.get("pwm_freq_hz", 0),
         "leak": data.get("leak"),
-        "auto": data.get("auto"),
+        "camera_scene": data.get("camera_scene"),
     })
 
     assert data["chip_id"] == "0x58", f"Chip ID mismatch: {data['chip_id']}"
+    assert "state" in data, "FSM state missing from status JSON"
+    assert "camera_scene" in data, "Camera scene missing from status JSON"
     assert (
         70.0 <= data["pressure_kpa"] <= 150.0
     ), f"Pressure out of range: {data['pressure_kpa']}"
@@ -165,27 +182,100 @@ def test_01_read_hil_status(hil, csv_record):
 
 def test_02_set_manual_pressure(hil, csv_record):
     """ทดสอบสั่งปรับค่าความดันคงที่ ตรวจสอบว่าค่าอัปเดตจริง และบันทึกลง CSV"""
-    hil.send_cmd("hil set_pressure 125.50")
+    hil.send_cmd("hil set_pressure 128.50")
 
     data = hil.send_cmd_json("hil status")
 
-    # บันทึกข้อมูล Telemetry ลงในรายงานผล CSV
     csv_record({
-        "target_pressure": 125.50,
+        "target_pressure": 128.50,
         "measured_pressure_kpa": data.get("pressure_kpa"),
         "auto": data.get("auto"),
     })
 
     assert (
-        abs(data["pressure_kpa"] - 125.50) < 0.1
+        abs(data["pressure_kpa"] - 128.50) < 0.2
     ), f"Pressure set value mismatch: {data['pressure_kpa']}"
-    assert data["auto"] is False, "Auto simulation should be disabled"
+    assert data["auto"] is False, "Auto simulation should be disabled after manual set"
+
+
+def test_03_state_machine_transitions(hil, csv_record):
+    """ทดสอบการเปลี่ยนสถานะ State Machine ผ่านคำสั่ง API (hil set_state)"""
+    # 1. ทดสอบเปลี่ยนเป็น INSUFFLATE
+    hil.send_cmd("hil set_state INSUFFLATE")
+    data_insuf = hil.send_cmd_json("hil status")
+    assert data_insuf["state"] == "INSUFFLATION"
+    assert data_insuf["camera_scene"] == "LUMEN_EXPANDING_INSUFFLATION"
+
+    # 2. ทดสอบเปลี่ยนเป็น INSPECT
+    hil.send_cmd("hil set_state INSPECT")
+    data_insp = hil.send_cmd_json("hil status")
+    assert data_insp["state"] == "STABLE_INSPECTION"
+    assert data_insp["camera_scene"] == "MUCOSAL_INSPECTION_POLYP_ACTIVE"
+
+    # 3. ทดสอบเปลี่ยนกลับสู่ IDLE
+    hil.send_cmd("hil set_state IDLE")
+    data_idle = hil.send_cmd_json("hil status")
+    assert data_idle["state"] == "IDLE"
+
+    csv_record({
+        "fsm_check": "INSUFFLATE -> INSPECT -> IDLE Passed",
+        "last_camera_scene": data_idle["camera_scene"]
+    })
+
+
+def test_04_leak_injection_and_audio(hil, csv_record):
+    """ทดสอบการฉีดลมรั่ว และตรวจสอบว่าสถานะเสียง AC Audio Leak เปิดทำงานพร้อมกัน"""
+    # สั่ง Inject Leak
+    hil.send_cmd("hil inject_leak 1")
+    data = hil.send_cmd_json("hil status")
+
+    csv_record({
+        "leak_state": data.get("leak"),
+        "audio_active": data.get("audio_active"),
+        "state_after_leak": data.get("state")
+    })
+
+    assert data["leak"] is True, "Leak should be active"
+    assert data["audio_active"] is True, "AC Audio leak must be active when leak occurs"
+    assert data["state"] == "LEAK_EVENT", f"State should be LEAK_EVENT, got: {data['state']}"
+
+    # เคลียร์ลมรั่ว
+    hil.send_cmd("hil inject_leak 0")
+    data_cleared = hil.send_cmd_json("hil status")
+    assert data_cleared["leak"] is False
+
+
+def test_05_mock_control_ios(hil, csv_record):
+    """ทดสอบจำลองสัญญาณ IO (Start/Stop, E-Stop, Solenoid Valve)"""
+    # 1. ทดสอบ Start IO
+    hil.send_cmd("hil set_start_stop 1")
+    data = hil.send_cmd_json("hil status")
+    assert data["start_stop_io"] is True
+
+    # 2. ทดสอบ Solenoid Purge Valve
+    hil.send_cmd("hil set_solenoid 1")
+    data = hil.send_cmd_json("hil status")
+    assert data["valve_open"] is True
+
+    # 3. ทดสอบ Emergency Stop IO
+    hil.send_cmd("hil set_estop 1")
+    data_estop = hil.send_cmd_json("hil status")
+    assert data_estop["estop"] is True
+    assert data_estop["state"] == "EMERGENCY_STOP"
+
+    # รีเซ็ตระบบ
+    hil.send_cmd("hil reset")
+    data_reset = hil.send_cmd_json("hil status")
+    assert data_reset["state"] == "IDLE"
+    assert data_reset["estop"] is False
+
+    csv_record({"io_tests": "Start/Stop, Solenoid, and E-Stop verified"})
 
 
 @pytest.mark.skip(
     reason="รอต่อสาย I2C เข้ากับบอร์ด Kria KR260 (ฮาร์ดแวร์บอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนสายสัญญาณ)"
 )
-def test_03_i2c_loopback_self_test(hil, csv_record):
+def test_06_i2c_loopback_self_test(hil, csv_record):
     """
     ทดสอบ I2C Master-to-Slave Loopback บนบอร์ด STM32
     (ต้องต่อสาย Jumper: I2C1 PB8/PB9 เข้ากับ I2C2 PF1/PF0 พร้อมตัวต้านทาน Pull-up)

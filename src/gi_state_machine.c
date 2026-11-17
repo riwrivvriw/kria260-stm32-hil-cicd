@@ -1,0 +1,291 @@
+/**
+ * @file gi_state_machine.c
+ * @brief การทำงานของ State Machine จำลองสภาพแวดล้อมทางเดินอาหารและกล้องส่องตรวจ
+ */
+
+#include "gi_state_machine.h"
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(gi_state_machine, LOG_LEVEL_INF);
+
+#define AMBIENT_PRESSURE_KPA   101.325f
+#define DEFAULT_TARGET_KPA     125.0f
+#define OVERPRESSURE_LIMIT_KPA 150.0f
+
+static struct k_mutex g_sm_mutex;
+static gi_system_status_t g_status;
+
+void gi_state_machine_init(void)
+{
+    k_mutex_init(&g_sm_mutex);
+
+    g_status.state = GI_STATE_IDLE;
+    g_status.current_pressure_kpa = AMBIENT_PRESSURE_KPA;
+    g_status.target_pressure_kpa = DEFAULT_TARGET_KPA;
+    g_status.pump_duty = 0.0f;
+    g_status.pwm_freq_hz = 0;
+    g_status.leak_active = false;
+    g_status.solenoid_valve_open = false;
+    g_status.audio_leak_active = false;
+    g_status.start_stop_io = false;
+    g_status.estop_active = false;
+    g_status.auto_simulation = true;
+    g_status.camera_scene = "STANDBY_PRE_PROCEDURE";
+
+    LOG_INF("GI State Machine Initialized in IDLE state.");
+}
+
+gi_state_t gi_state_machine_get_state(void)
+{
+    gi_state_t s;
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    s = g_status.state;
+    k_mutex_unlock(&g_sm_mutex);
+    return s;
+}
+
+const char* gi_state_to_str(gi_state_t state)
+{
+    switch (state) {
+    case GI_STATE_IDLE:              return "IDLE";
+    case GI_STATE_INSUFFLATION:      return "INSUFFLATION";
+    case GI_STATE_STABLE_INSPECTION: return "STABLE_INSPECTION";
+    case GI_STATE_LEAK_EVENT:        return "LEAK_EVENT";
+    case GI_STATE_DEFLATION_STOP:    return "DEFLATION_STOP";
+    case GI_STATE_EMERGENCY_STOP:    return "EMERGENCY_STOP";
+    default:                         return "UNKNOWN";
+    }
+}
+
+const char* gi_state_get_camera_scene(gi_state_t state)
+{
+    switch (state) {
+    case GI_STATE_IDLE:
+        return "STANDBY_EXTERNAL_VIEW";
+    case GI_STATE_INSUFFLATION:
+        return "LUMEN_EXPANDING_INSUFFLATION";
+    case GI_STATE_STABLE_INSPECTION:
+        return "MUCOSAL_INSPECTION_POLYP_ACTIVE";
+    case GI_STATE_LEAK_EVENT:
+        return "CAVITY_COLLAPSING_TURBULENT_BUBBLES";
+    case GI_STATE_DEFLATION_STOP:
+        return "DESUFFLATION_SCOPE_RETRACTION";
+    case GI_STATE_EMERGENCY_STOP:
+        return "EMERGENCY_FREEZE_WARNING_OVERLAY";
+    default:
+        return "UNKNOWN_SCENE";
+    }
+}
+
+void gi_state_machine_set_state(gi_state_t new_state)
+{
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    g_status.state = new_state;
+    g_status.camera_scene = gi_state_get_camera_scene(new_state);
+
+    if (new_state == GI_STATE_LEAK_EVENT) {
+        g_status.leak_active = true;
+        g_status.audio_leak_active = true;
+    } else if (new_state == GI_STATE_DEFLATION_STOP) {
+        g_status.solenoid_valve_open = true;
+        g_status.audio_leak_active = false;
+    } else if (new_state == GI_STATE_EMERGENCY_STOP) {
+        g_status.estop_active = true;
+        g_status.solenoid_valve_open = true;
+        g_status.audio_leak_active = false;
+    } else {
+        g_status.audio_leak_active = false;
+        g_status.solenoid_valve_open = false;
+    }
+
+    LOG_INF("State explicitly set to: %s", gi_state_to_str(new_state));
+    k_mutex_unlock(&g_sm_mutex);
+}
+
+void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
+                             bool start_stop_pin, bool estop_pin)
+{
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+
+    g_status.pump_duty = pump_duty;
+    g_status.pwm_freq_hz = pwm_freq;
+    g_status.start_stop_io = start_stop_pin;
+    g_status.estop_active = estop_pin;
+
+    // 1. ตรวจสอบ Emergency Stop (ความสำคัญสูงสุด)
+    if (estop_pin || g_status.current_pressure_kpa >= OVERPRESSURE_LIMIT_KPA) {
+        if (g_status.state != GI_STATE_EMERGENCY_STOP) {
+            g_status.state = GI_STATE_EMERGENCY_STOP;
+            g_status.solenoid_valve_open = true;
+            g_status.audio_leak_active = false;
+            LOG_ERR("EMERGENCY STOP TRIGGERED! (P=%.2f kPa, EstopPin=%d)",
+                    (double)g_status.current_pressure_kpa, estop_pin);
+        }
+    }
+
+    // 2. State Machine Transitions
+    switch (g_status.state) {
+    case GI_STATE_IDLE:
+        g_status.solenoid_valve_open = false;
+        g_status.audio_leak_active = false;
+        // เริ่มต้นเมื่อได้รับสัญญาณ Start IO หรือ KR260 เริ่มขับ PWM ปั๊มลม
+        if (start_stop_pin || pump_duty > 0.05f) {
+            g_status.state = GI_STATE_INSUFFLATION;
+            LOG_INF("Transition -> INSUFFLATION (Pumping started)");
+        }
+        break;
+
+    case GI_STATE_INSUFFLATION:
+        g_status.solenoid_valve_open = false;
+        if (g_status.leak_active) {
+            g_status.state = GI_STATE_LEAK_EVENT;
+            g_status.audio_leak_active = true;
+            LOG_WRN("Transition -> LEAK_EVENT (Air leak detected during insufflation)");
+        } else if (!start_stop_pin && pump_duty < 0.02f) {
+            g_status.state = GI_STATE_DEFLATION_STOP;
+            g_status.solenoid_valve_open = true;
+            LOG_INF("Transition -> DEFLATION_STOP (Procedure aborted)");
+        } else if (g_status.current_pressure_kpa >= (g_status.target_pressure_kpa - 2.5f)) {
+            g_status.state = GI_STATE_STABLE_INSPECTION;
+            LOG_INF("Transition -> STABLE_INSPECTION (Target reached: %.2f kPa)",
+                    (double)g_status.current_pressure_kpa);
+        }
+        break;
+
+    case GI_STATE_STABLE_INSPECTION:
+        g_status.solenoid_valve_open = false;
+        g_status.audio_leak_active = false;
+        if (g_status.leak_active) {
+            g_status.state = GI_STATE_LEAK_EVENT;
+            g_status.audio_leak_active = true;
+            LOG_WRN("Transition -> LEAK_EVENT (Air leak detected during inspection)");
+        } else if (!start_stop_pin) {
+            g_status.state = GI_STATE_DEFLATION_STOP;
+            g_status.solenoid_valve_open = true;
+            LOG_INF("Transition -> DEFLATION_STOP (Stop IO asserted)");
+        } else if (g_status.current_pressure_kpa < (g_status.target_pressure_kpa - 8.0f)) {
+            // ความดันตกต่ำกว่าเกณฑ์ กลับไปเร่งปั๊มใหม่
+            g_status.state = GI_STATE_INSUFFLATION;
+            LOG_INF("Transition back -> INSUFFLATION (Pressure low: %.2f kPa)",
+                    (double)g_status.current_pressure_kpa);
+        }
+        break;
+
+    case GI_STATE_LEAK_EVENT:
+        g_status.audio_leak_active = true;
+        if (!g_status.leak_active) {
+            // ซ่อมรอยรั่วหรือเคลียร์สถานะรั่วแล้ว
+            g_status.audio_leak_active = false;
+            g_status.state = GI_STATE_INSUFFLATION;
+            LOG_INF("Transition -> INSUFFLATION (Leak cleared, repressurizing)");
+        } else if (!start_stop_pin && pump_duty < 0.02f) {
+            g_status.state = GI_STATE_DEFLATION_STOP;
+            g_status.audio_leak_active = false;
+            g_status.solenoid_valve_open = true;
+            LOG_INF("Transition -> DEFLATION_STOP");
+        }
+        break;
+
+    case GI_STATE_DEFLATION_STOP:
+        g_status.solenoid_valve_open = true;
+        g_status.audio_leak_active = false;
+        // เมื่อความดันระบายลงจนใกล้เคียงบรรยากาศ ให้กลับสู่ IDLE
+        if (g_status.current_pressure_kpa <= (AMBIENT_PRESSURE_KPA + 1.0f)) {
+            g_status.state = GI_STATE_IDLE;
+            g_status.solenoid_valve_open = false;
+            LOG_INF("Transition -> IDLE (Pressure back to ambient)");
+        }
+        break;
+
+    case GI_STATE_EMERGENCY_STOP:
+        g_status.solenoid_valve_open = true;
+        g_status.audio_leak_active = false;
+        // ปลด E-Stop ผ่านคำสั่ง reset หรือปล่อยขาสัญญาณ
+        if (!estop_pin && g_status.current_pressure_kpa <= AMBIENT_PRESSURE_KPA + 2.0f) {
+            // รอคำสั่ง Explicit Reset จากผู้ใช้
+        }
+        break;
+    }
+
+    // 3. คำนวณสมการพลศาสตร์ Closed-Loop (เมื่อเปิด Auto Simulation)
+    if (g_status.auto_simulation) {
+        const float k_pump = 28.0f; // อัตราปั๊ม (kPa/s ที่ 100% duty)
+        const float k_leak = 22.0f; // อัตราการรั่ว (kPa/s)
+        const float k_vent = 35.0f; // อัตราการระบายของวาล์ว Solenoid
+
+        float effective_duty = (g_status.state == GI_STATE_EMERGENCY_STOP) ? 0.0f : pump_duty;
+        float dp = (k_pump * effective_duty) * dt;
+
+        // หักลบผลจากการรั่ว
+        if (g_status.leak_active || g_status.state == GI_STATE_LEAK_EVENT) {
+            dp -= k_leak * (g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA) * dt;
+        }
+
+        // หักลบผลจากวาล์ว Solenoid ระบายก๊าซ
+        if (g_status.solenoid_valve_open) {
+            dp -= k_vent * (g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA) * dt;
+        } else if (effective_duty < 0.02f && g_status.current_pressure_kpa > AMBIENT_PRESSURE_KPA) {
+            // ซึมออกตามธรรมชาติเล็กน้อย
+            dp -= 0.3f * (g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA) * dt;
+        }
+
+        g_status.current_pressure_kpa += dp;
+        if (g_status.current_pressure_kpa < AMBIENT_PRESSURE_KPA) {
+            g_status.current_pressure_kpa = AMBIENT_PRESSURE_KPA;
+        }
+    }
+
+    g_status.camera_scene = gi_state_get_camera_scene(g_status.state);
+
+    k_mutex_unlock(&g_sm_mutex);
+}
+
+void gi_state_machine_get_status(gi_system_status_t *out_status)
+{
+    if (!out_status) return;
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    *out_status = g_status;
+    k_mutex_unlock(&g_sm_mutex);
+}
+
+void gi_state_machine_inject_leak(bool active)
+{
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    g_status.leak_active = active;
+    g_status.auto_simulation = true;
+    if (active) {
+        g_status.state = GI_STATE_LEAK_EVENT;
+        g_status.audio_leak_active = true;
+    }
+    k_mutex_unlock(&g_sm_mutex);
+}
+
+void gi_state_machine_set_fixed_pressure(float pressure_kpa)
+{
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    g_status.auto_simulation = false;
+    g_status.current_pressure_kpa = pressure_kpa;
+    k_mutex_unlock(&g_sm_mutex);
+}
+
+void gi_state_machine_set_solenoid(bool open_valve)
+{
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    g_status.solenoid_valve_open = open_valve;
+    k_mutex_unlock(&g_sm_mutex);
+}
+
+void gi_state_machine_reset(void)
+{
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    g_status.state = GI_STATE_IDLE;
+    g_status.current_pressure_kpa = AMBIENT_PRESSURE_KPA;
+    g_status.leak_active = false;
+    g_status.solenoid_valve_open = false;
+    g_status.audio_leak_active = false;
+    g_status.estop_active = false;
+    g_status.auto_simulation = true;
+    g_status.camera_scene = gi_state_get_camera_scene(GI_STATE_IDLE);
+    LOG_INF("GI State Machine Reset to IDLE.");
+    k_mutex_unlock(&g_sm_mutex);
+}
