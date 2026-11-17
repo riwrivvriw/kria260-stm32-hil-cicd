@@ -17,7 +17,7 @@
 /* I2C1: กำหนดเป็น Target (Slave) */
 &i2c1 {
     status = "okay";
-    clock-frequency = <I2C_BITRATE_FAST>; /* 400 kHz */
+    clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz สำหรับ Internal Pull-up */
 
     pressure_target: eeprom_slave@58 {
         compatible = "zephyr,i2c-target-eeprom";
@@ -31,5 +31,5 @@
     pinctrl-0 = <&i2c2_scl_pf1 &i2c2_sda_pf0>;
     pinctrl-names = "default";
     status = "okay";
-    clock-frequency = <I2C_BITRATE_FAST>; /* 400 kHz */
+    clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz สำหรับ Internal Pull-up */
 };
