@@ -13,7 +13,7 @@
 |                       1. Laptop Host & CI/CD Orchestrator                       |
 | - Azure DevOps Self-hosted Agent                                                |
 | - Pytest Testbench Controller (USB Serial 115200 Auto-detect)                   |
-| - Pure JUnit XML Test Reporting (PublishTestResults@2)                          |
+| - CSV Test Reporting & Metrics Export (reports/test_results.csv)                |
 | - Virtual Video Injection Engine (GStreamer ผ่าน Ethernet LAN)                  |
 +------------------------+-----------------------------------+--------------------+
                          | (USB Serial Auto-detect)          | (Ethernet / SSH)
@@ -55,14 +55,16 @@
 
 2. **Pytest Testbench & Host Communication:**
    * [tests/test_hil_stm32.py](file:///Users/pongpipat/hil/tests/test_hil_stm32.py):
-     * เพิ่มระบบ **Auto-detect Serial Port** (`/dev/tty.usbmodem*`) ไม่ต้องแก้ไขชื่อพอร์ตเอง
+     * เพิ่มระบบ **Auto-detect Serial Port** ข้ามแพลตฟอร์ม (macOS, Linux, Windows) ไม่ต้องแก้ไขชื่อพอร์ตเอง
      * พัฒนา Regex Parser กรอง ANSI Terminal Color ออกจาก JSON อย่างแม่นยำ
-     * ปรับปรุง Robust Timeout Loop ป้องกัน Serial Timing Collision บน macOS
+     * ปรับปรุง Robust Timeout Loop ป้องกัน Serial Timing Collision บน macOS/Windows
+     * เพิ่มการบันทึก Telemetry Metrics (`chip_id`, `pressure_kpa`, `pump_duty`, `pwm_freq_hz`) เข้าสู่ระบบรายงานผล CSV โดยตรงผ่าน Fixture `csv_record`
      * **ผลการรัน: Test 1 (Read Status) และ Test 2 (Set Pressure) PASSED 100%**
      * Test 3 (Loopback) ถูก Skip ไว้อย่างถูกต้อง เนื่องจากบอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนบอร์ด
 
-3. **Azure DevOps CI/CD Integration:**
-   * [azure-pipelines.yml](file:///Users/pongpipat/hil/azure-pipelines.yml): ปรับคอนฟิกให้ส่งออกเฉพาะ **JUnit XML** (`reports/test_results.xml`) เข้าสู่ Azure Tests Dashboard โดยตรง
+3. **Azure DevOps CI/CD Integration & CSV Reporting:**
+   * [tests/conftest.py](file:///Users/pongpipat/hil/tests/conftest.py): พัฒนา Custom Pytest Hooks (`pytest_runtest_makereport`, `pytest_sessionfinish`) แปลงผลการทดสอบและค่า Telemetry เป็น CSV (`reports/test_results.csv`) รองรับ Argument `--csv=<path>`
+   * [azure-pipelines.yml](file:///Users/pongpipat/hil/azure-pipelines.yml): ปรับคอนฟิกให้ส่งออกรายงานผลการทดสอบและ Telemetry เป็นไฟล์ **CSV Format** (`reports/test_results.csv`) พร้อม Publish Pipeline Artifact
    * [pytest.ini](file:///Users/pongpipat/hil/pytest.ini): กำหนด Markers (`smoke`, `hardware`, `safety`, `ai`)
 
 ---

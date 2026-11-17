@@ -249,7 +249,7 @@ stages:
     steps:
     - script: |
         source .venv/bin/activate
-        pytest tests/ -v --junitxml=reports/test_results.xml
+        pytest tests/ -v --csv=reports/test_results.csv
       displayName: 'Run Pytest Framework'
 ```
 

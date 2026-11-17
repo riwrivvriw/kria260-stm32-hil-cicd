@@ -1,6 +1,7 @@
 """
 test_hil_stm32.py
 ตัวอย่างชุดทดสอบ Pytest บน Host Laptop ควบคุม STM32 HIL ผ่าน USB Serial (Zephyr Shell)
+บันทึกผลการทดสอบและค่า Telemetry เป็นรูปแบบ CSV ผ่าน Fixture ใน conftest.py
 """
 
 import pytest
@@ -9,13 +10,46 @@ import json
 import time
 import re
 import glob
+import os
+import sys
 
-# ฟังก์ชันค้นหาพอร์ต USB Modem ของ STM32 บน Mac อัตโนมัติ
+
 def find_stm32_port() -> str:
-    ports = glob.glob("/dev/tty.usbmodem*")
+    """
+    ฟังก์ชันค้นหาพอร์ต USB Serial ของ STM32 แบบ Cross-platform
+    รองรับทั้ง macOS (/dev/tty.usbmodem*), Linux (/dev/ttyACM*), และ Windows (COM*)
+    """
+    # 1. ตรวจสอบจาก Environment Variable ก่อน
+    env_port = os.environ.get("HIL_PORT") or os.environ.get("STM32_PORT")
+    if env_port:
+        return env_port
+
+    # 2. ค้นหาผ่าน PySerial list_ports
+    try:
+        from serial.tools import list_ports
+        com_ports = list(list_ports.comports())
+        for p in com_ports:
+            desc = (p.description or "").lower()
+            mfg = (p.manufacturer or "").lower()
+            hwid = (p.hwid or "").lower()
+            # ตรวจจับชิปเซ็ต ST-Link / STMicroelectronics
+            if any(k in desc or k in mfg or k in hwid for k in ("stlink", "st-link", "stm", "stmicroelectronics")):
+                return p.device
+            if "usbmodem" in p.device.lower() or "ttyacm" in p.device.lower():
+                return p.device
+
+        if com_ports and sys.platform.startswith("win"):
+            return com_ports[0].device
+    except Exception:
+        pass
+
+    # 3. Fallback ผ่าน glob สำหรับ macOS / Linux
+    ports = glob.glob("/dev/tty.usbmodem*") + glob.glob("/dev/ttyACM*")
     if ports:
         return sorted(ports)[0]
-    return "/dev/tty.usbmodem11103"
+
+    return "COM3" if sys.platform.startswith("win") else "/dev/tty.usbmodem11103"
+
 
 SERIAL_PORT = find_stm32_port()
 BAUDRATE = 115200
@@ -32,7 +66,7 @@ class STM32HILClient:
         self.ser.timeout = 1.0
         self.ser.rtscts = False
         self.ser.dsrdtr = False
-        
+
         try:
             self.ser.open()
         except serial.SerialException as e:
@@ -109,9 +143,19 @@ def hil():
     client.close()
 
 
-def test_01_read_hil_status(hil):
-    """ทดสอบอ่านสถานะ JSON จาก STM32"""
+def test_01_read_hil_status(hil, csv_record):
+    """ทดสอบอ่านสถานะ JSON จาก STM32 และบันทึกค่าลง CSV"""
     data = hil.send_cmd_json("hil status")
+
+    # บันทึกข้อมูล Telemetry ลงในรายงานผล CSV
+    csv_record({
+        "chip_id": data.get("chip_id"),
+        "pressure_kpa": data.get("pressure_kpa"),
+        "pump_duty": data.get("pump_duty", 0.0),
+        "pwm_freq_hz": data.get("pwm_freq_hz", 0),
+        "leak": data.get("leak"),
+        "auto": data.get("auto"),
+    })
 
     assert data["chip_id"] == "0x58", f"Chip ID mismatch: {data['chip_id']}"
     assert (
@@ -119,11 +163,18 @@ def test_01_read_hil_status(hil):
     ), f"Pressure out of range: {data['pressure_kpa']}"
 
 
-def test_02_set_manual_pressure(hil):
-    """ทดสอบสั่งปรับค่าความดันคงที่ และตรวจสอบว่าค่าอัปเดตจริง"""
+def test_02_set_manual_pressure(hil, csv_record):
+    """ทดสอบสั่งปรับค่าความดันคงที่ ตรวจสอบว่าค่าอัปเดตจริง และบันทึกลง CSV"""
     hil.send_cmd("hil set_pressure 125.50")
 
     data = hil.send_cmd_json("hil status")
+
+    # บันทึกข้อมูล Telemetry ลงในรายงานผล CSV
+    csv_record({
+        "target_pressure": 125.50,
+        "measured_pressure_kpa": data.get("pressure_kpa"),
+        "auto": data.get("auto"),
+    })
 
     assert (
         abs(data["pressure_kpa"] - 125.50) < 0.1
@@ -134,12 +185,13 @@ def test_02_set_manual_pressure(hil):
 @pytest.mark.skip(
     reason="รอต่อสาย I2C เข้ากับบอร์ด Kria KR260 (ฮาร์ดแวร์บอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนสายสัญญาณ)"
 )
-def test_03_i2c_loopback_self_test(hil):
+def test_03_i2c_loopback_self_test(hil, csv_record):
     """
     ทดสอบ I2C Master-to-Slave Loopback บนบอร์ด STM32
     (ต้องต่อสาย Jumper: I2C1 PB8/PB9 เข้ากับ I2C2 PF1/PF0 พร้อมตัวต้านทาน Pull-up)
     """
     data = hil.send_cmd_json("hil loopback")
+    csv_record(data)
 
     if data.get("loopback") == "FAIL" and data.get("error_code") == -5:
         pytest.fail(

@@ -20,11 +20,11 @@ pool:
 
 variables:
   PYTHON_ENV: '$(System.DefaultWorkingDirectory)/.venv'
-  REPORT_FILE: '$(System.DefaultWorkingDirectory)/reports/test_results.xml'
+  REPORT_FILE: '$(System.DefaultWorkingDirectory)/reports/test_results.csv'
 
 stages:
 # ------------------------------------------------------------------------------
-# Stage 1: รันชุดทดสอบ HIL ผ่าน Pytest และส่งออกผลเป็น JUnit XML
+# Stage 1: รันชุดทดสอบ HIL ผ่าน Pytest และส่งออกผลเป็น CSV Report
 # ------------------------------------------------------------------------------
 - stage: HIL_Testing
   displayName: 'Hardware-In-The-Loop Test Suite'
@@ -45,22 +45,21 @@ stages:
         pip install -r requirements.txt
       displayName: 'Setup Python & Dependencies'
 
-    # 2. รันชุดทดสอบ Pytest และส่งออกผลลัพธ์เป็นไฟล์ JUnit XML
+    # 2. รันชุดทดสอบ Pytest และส่งออกผลลัพธ์เป็นไฟล์ CSV
     - script: |
         echo "=== 2. Running HIL Pytest Framework ==="
         source $(PYTHON_ENV)/bin/activate
         mkdir -p $(System.DefaultWorkingDirectory)/reports
         
-        # รันการทดสอบและสร้างรายงาน JUnit XML
-        pytest tests/ -v --junitxml=$(REPORT_FILE)
-      displayName: 'Run Pytest (Generate JUnit XML)'
+        # รันการทดสอบและสร้างรายงาน CSV
+        pytest tests/ -v --csv=$(REPORT_FILE)
+      displayName: 'Run Pytest (Generate CSV Report)'
 
-    # 3. นำไฟล์ XML ไปแสดงผลในแท็บ "Tests" ของ Azure DevOps อัตโนมัติ
-    - task: PublishTestResults@2
+    # 3. นำไฟล์ CSV อัปโหลดเป็น Pipeline Artifact ใน Azure DevOps
+    - task: PublishPipelineArtifact@2
       condition: always() # ให้ทำงานเสมอแม้ว่า Test Case จะ FAILED
       inputs:
-        testResultsFormat: 'JUnit'
-        testResultsFiles: '$(REPORT_FILE)'
-        testRunTitle: 'HIL Automated Test Run'
-        failTaskOnFailedTests: true
-      displayName: 'Publish Test Results to Azure Tests Dashboard'
+        targetPath: '$(REPORT_FILE)'
+        artifact: 'HIL_Test_Results_CSV'
+        publishLocation: 'pipeline'
+      displayName: 'Publish CSV Test Report Artifact'
