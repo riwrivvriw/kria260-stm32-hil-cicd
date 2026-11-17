@@ -52,6 +52,7 @@
    * [app.overlay](file:///Users/pongpipat/hil/app.overlay): แมปพิน I2C1 (PB8/PB9) และ I2C2 (PF1/PF0) ที่ความเร็ว Standard Mode 100 kHz
    * [prj.conf](file:///Users/pongpipat/hil/prj.conf): ปรับแต่ง Kconfig สะอาด ปราศจาก Warning (0 Errors, 0 Warnings)
    * [zephyrRTOS.md](file:///Users/pongpipat/hil/zephyrRTOS.md): จัดทำคู่มือเจาะลึกอธิบายการทำงานของโค้ดแบบทีละฟังก์ชัน
+   * [howto/kr260_bringup_and_flash_guide.md](file:///Users/pongpipat/hil/howto/kr260_bringup_and_flash_guide.md): คู่มือการ Bring-up บอร์ด KR260 ด้วย Vivado + PetaLinux และกลยุทธ์การ Flash สำหรับ CI/CD (PL vs PS vs Boot Image)
 2. **Pytest Testbench & Host Communication:**
    * [tests/test_hil_stm32.py](file:///Users/pongpipat/hil/tests/test_hil_stm32.py):
      * เพิ่มระบบ **Auto-detect Serial Port** (`/dev/tty.usbmodem*`) ไม่ต้องแก้ไขชื่อพอร์ตเอง
