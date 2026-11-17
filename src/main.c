@@ -1,8 +1,8 @@
 /**
  * @file main.c
  * @brief STM32H5 HIL Plant Simulator (Zephyr RTOS)
- * @details ทำหน้าที่เป็นทั้ง I2C Target (Slave) และ I2C Controller (Master Loopback)
- *          พร้อมรองรับคำสั่งจาก Pytest Host ผ่าน Zephyr Shell
+ * @details ทำหน้าที่เป็นทั้ง I2C Target (Slave), Closed-Loop Pressure Plant Simulator,
+ *          และรับสัญญาณ Airpump PWM จากบอร์ด Kria KR260 เพื่อคำนวณความดันแบบ Real-Time
  */
 
 #include <zephyr/kernel.h>
@@ -13,6 +13,8 @@
 #include <zephyr/logging/log.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "kr260/kr260_pwm_receiver.h"
 
 LOG_MODULE_REGISTER(hil_simulator, LOG_LEVEL_INF);
 
@@ -32,7 +34,7 @@ static struct k_mutex g_buffer_mutex;
 static const struct device *g_target_dev;
 
 /* ตัวแปรสถานะระบบ Plant Simulation */
-static float g_current_pressure_kpa = 101.325f; // ค่าความดันเริ่มต้น (1 atm)
+static float g_current_pressure_kpa = 101.325f; // ค่าความดันเริ่มต้น (1 atm = 101.325 kPa)
 static bool  g_leak_injected = false;           // จำลองสภาวะลมรั่ว
 static bool  g_auto_simulation = true;          // เปิด/ปิด การคำนวณฟิสิกส์อัตโนมัติ
 
@@ -45,7 +47,7 @@ static void update_eeprom_memory(void)
 }
 
 /* -------------------------------------------------------------------------- */
-/* Thread จำลองฟิสิกส์ความดัน (Plant Model Simulation Thread)                  */
+/* Thread จำลองฟิสิกส์ความดัน (Closed-Loop Plant Model Simulation Thread)       */
 /* -------------------------------------------------------------------------- */
 #define SIM_STACK_SIZE 1024
 #define SIM_PRIORITY   7
@@ -56,31 +58,39 @@ static void plant_sim_thread_entry(void *p1, void *p2, void *p3)
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
 
-    LOG_INF("Plant Simulation Thread Started.");
+    LOG_INF("Closed-Loop Plant Simulation Thread Started.");
+    const float dt = 0.05f;          // คาบเวลาการคำนวณ 50ms (0.05 วินาที)
+    const float k_pump = 25.0f;      // อัตราการเพิ่มความดันเมื่อปั๊มทำงาน 100% (kPa/s)
+    const float k_leak = 18.0f;      // อัตราการระบายความดันเมื่อเกิดรอยรั่ว
+    const float p_ambient = 101.325f;// ความดันบรรยากาศ
 
     while (1) {
         if (g_auto_simulation) {
+            // อ่านค่า Duty Cycle ปัจจุบันที่ KR260 ส่งมา (0.0 - 1.0)
+            float pump_duty = kr260_pwm_get_duty_cycle();
+
             k_mutex_lock(&g_buffer_mutex, K_FOREVER);
 
+            // สมการพลศาสตร์ Closed-Loop: dP/dt = (K_pump * Duty) - (K_leak * Leak)
+            float dp = (k_pump * pump_duty) * dt;
+
             if (g_leak_injected) {
-                // หากมีการรั่ว ความดันจะลดลงอย่างรวดเร็ว
-                g_current_pressure_kpa -= 0.8f;
-                if (g_current_pressure_kpa < 70.0f) {
-                    g_current_pressure_kpa = 70.0f;
-                }
-            } else {
-                // สภาวะปกติ: จำลองคลื่นความดันกระเพื่อมเบาๆ
-                static float step = 0.1f;
-                g_current_pressure_kpa += step;
-                if (g_current_pressure_kpa >= 105.0f || g_current_pressure_kpa <= 98.0f) {
-                    step = -step;
-                }
+                // หากมีการรั่ว ความดันจะลดลงอย่างรวดเร็วสู่ระดับบรรยากาศ
+                dp -= k_leak * (g_current_pressure_kpa - p_ambient) * dt;
+            } else if (pump_duty < 0.02f && g_current_pressure_kpa > p_ambient) {
+                // หากปั๊มดับและไม่มีการรั่ว ความดันจะค่อยๆ คลายตัวลงช้าๆ
+                dp -= 0.5f * (g_current_pressure_kpa - p_ambient) * dt;
             }
 
-            // แปลงค่าความดันเป็น Fixed-point 16-bit (คูณ 100 เพื่อทศนิยม 2 ตำแหน่ง)
+            g_current_pressure_kpa += dp;
+            if (g_current_pressure_kpa < p_ambient) {
+                g_current_pressure_kpa = p_ambient;
+            }
+
+            // แปลงค่าความดันเป็น Fixed-point 16-bit (คูณ 100 เพื่อเก็บทศนิยม 2 ตำแหน่ง)
             uint16_t raw_val = (uint16_t)(g_current_pressure_kpa * 100.0f);
 
-            // อัปเดตข้อมูลลง Register Buffer ให้ KR260 เข้ามาอ่าน
+            // อัปเดตข้อมูลลง Register Buffer ให้ KR260 เข้ามาอ่านผ่าน I2C
             g_i2c_buffer[REG_CHIP_ID]      = TARGET_I2C_ADDR;
             g_i2c_buffer[REG_STATUS]       = g_leak_injected ? 0x01 : 0x00;
             g_i2c_buffer[REG_PRESSURE_MSB] = (raw_val >> 8) & 0xFF;
@@ -115,7 +125,6 @@ static int run_i2c_loopback_test(uint16_t *read_raw_pressure, uint8_t *read_chip
     uint8_t reg_addr = REG_CHIP_ID;
     uint8_t rx_data[4] = {0};
 
-    // ส่ง Register Address 0x00 แล้วอ่านข้อมูลกลับมา 4 bytes รวดเดียว
     int ret = i2c_write_read(i2c_master, TARGET_I2C_ADDR, 
                              &reg_addr, 1, 
                              rx_data, sizeof(rx_data));
@@ -137,10 +146,16 @@ static int cmd_hil_status(const struct shell *sh, size_t argc, char **argv)
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
 
+    float pump_duty = kr260_pwm_get_duty_cycle();
+    uint32_t pwm_freq = kr260_pwm_get_frequency_hz();
+
     k_mutex_lock(&g_buffer_mutex, K_FOREVER);
-    shell_print(sh, "{\"chip_id\": \"0x%02X\", \"pressure_kpa\": %.2f, \"leak\": %s, \"auto\": %s}",
+    // รายงานสถานะ JSON พร้อมค่า PWM Duty Cycle ที่วัดได้จาก KR260 แบบสดๆ
+    shell_print(sh, "{\"chip_id\": \"0x%02X\", \"pressure_kpa\": %.2f, \"pump_duty\": %.2f, \"pwm_freq_hz\": %u, \"leak\": %s, \"auto\": %s}",
                 g_i2c_buffer[REG_CHIP_ID],
                 (double)g_current_pressure_kpa,
+                (double)pump_duty,
+                pwm_freq,
                 g_leak_injected ? "true" : "false",
                 g_auto_simulation ? "true" : "false");
     k_mutex_unlock(&g_buffer_mutex);
@@ -236,14 +251,19 @@ int main(void)
     g_i2c_buffer[REG_CHIP_ID] = TARGET_I2C_ADDR;
     g_i2c_buffer[REG_STATUS]  = 0x00;
 
-    // เชื่อมต่อ Buffer เข้ากับ I2C Target EEPROM Driver
+    // 1. เชื่อมต่อ Buffer เข้ากับ I2C Target EEPROM Driver
     g_target_dev = DEVICE_DT_GET(DT_ALIAS(hil_target));
     if (!device_is_ready(g_target_dev)) {
         LOG_ERR("Target device (hil-target) is NOT ready!");
         return -ENODEV;
     }
-
     update_eeprom_memory();
+
+    // 2. เริ่มต้นระบบตรวจวัดสัญญาณ PWM จาก KR260
+    int ret = kr260_pwm_receiver_init();
+    if (ret != 0) {
+        LOG_WRN("KR260 PWM Receiver init returned %d (Pin may not be driven yet)", ret);
+    }
 
     LOG_INF("I2C Target registered at address 0x%02X successfully.", TARGET_I2C_ADDR);
     LOG_INF("Zephyr Shell ready. Type 'hil status' to inspect.");

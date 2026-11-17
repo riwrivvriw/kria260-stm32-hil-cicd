@@ -2,16 +2,32 @@
  * DeviceTree Overlay สำหรับ STM32H563ZI (Nucleo-H563ZI)
  *
  * 1. I2C1: ทำหน้าที่เป็น Target (Slave) จำลอง Sensor Registers ที่ Address 0x58
- *          (พินเริ่มต้นบนบอร์ด Arduino D15/D14: PB8 = SCL, PB9 = SDA)
+ *          (พิน Arduino D15/D14: PB8 = SCL, PB9 = SDA)
  * 2. I2C2: ทำหน้าที่เป็น Controller (Master) ใช้สำหรับทดสอบ Loopback บนบอร์ดตัวเอง
  *          (พิน Morpho Header: PF1 = SCL, PF0 = SDA)
+ * 3. KR260 PWM Input: รับสัญญาณ Airpump PWM จาก KR260 (ขา PMOD1 Pin 1)
+ *          (พิน Arduino D2: PF15 พร้อม Internal Pull-Down)
  */
 
 / {
     aliases {
         hil-target = &pressure_target;
         hil-master = &i2c2;
+        kr260-pwm  = &kr260_pwm_input;
     };
+
+    kr260_hil_pins {
+        compatible = "gpio-keys";
+        kr260_pwm_input: pwm_in {
+            gpios = <&gpiof 15 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+            label = "KR260 Airpump PWM Capture Input";
+        };
+    };
+};
+
+/* เปิดใช้งาน GPIOF สำหรับรับสัญญาณ PWM */
+&gpiof {
+    status = "okay";
 };
 
 /* I2C1: กำหนดเป็น Target (Slave) */
