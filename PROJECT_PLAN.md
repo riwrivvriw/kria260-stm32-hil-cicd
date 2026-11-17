@@ -54,7 +54,10 @@
    * [zephyrRTOS.md](file:///Users/pongpipat/hil/zephyrRTOS.md): จัดทำคู่มือเจาะลึกอธิบายการทำงานของโค้ดแบบทีละฟังก์ชัน
    * [howto/kr260_vivado_design_guide.md](file:///Users/pongpipat/hil/howto/kr260_vivado_design_guide.md): คู่มือ Step-by-Step การสร้าง Vivado Block Design เริ่มต้น (Zynq MPSoC, AXI IIC, PWM Pump, GPIO Valve, XDC Constraints)
    * [howto/kr260_bringup_and_flash_guide.md](file:///Users/pongpipat/hil/howto/kr260_bringup_and_flash_guide.md): คู่มือการ Bring-up บอร์ด KR260 ด้วย Vivado + PetaLinux และกลยุทธ์การ Flash สำหรับ CI/CD (PL vs PS vs Boot Image)
-2. **Pytest Testbench & Host Communication:**
+2. **Kria KR260 Custom RTL Modules (Hardware Development เริ่มต้น):**
+   * [hardware/rtl/pwm_controller.sv](file:///Users/pongpipat/hil/hardware/rtl/pwm_controller.sv): Custom Airpump PWM Controller 10-bit พร้อมระบบ Hardware Emergency Interlock
+   * [hardware/sim/tb_pwm_controller.sv](file:///Users/pongpipat/hil/hardware/sim/tb_pwm_controller.sv): Testbench จำลองการทำงานและตรวจสอบ Assertions ใน Vivado Simulator
+3. **Pytest Testbench & Host Communication:**
    * [tests/test_hil_stm32.py](file:///Users/pongpipat/hil/tests/test_hil_stm32.py):
      * เพิ่มระบบ **Auto-detect Serial Port** (`/dev/tty.usbmodem*`) ไม่ต้องแก้ไขชื่อพอร์ตเอง
      * พัฒนา Regex Parser กรอง ANSI Terminal Color ออกจาก JSON อย่างแม่นยำ
