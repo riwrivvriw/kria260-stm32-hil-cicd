@@ -56,9 +56,11 @@
 2. **การคอมไพล์ (Build Validation):**
    * แก้ไข Warning `-Wdouble-promotion` ด้วย Explicit Double Cast
    * คอมไพล์ผ่านสมบูรณ์ **0 Errors, 0 Warnings** (Binary: `build/zephyr/zephyr.elf`)
-3. **ระบบทดสอบฝั่ง Host (Pytest Framework):**
+3. **ระบบทดสอบฝั่ง Host (Pytest Framework & Reporting):**
    * [requirements.txt](file:///Users/pongpipat/hil/requirements.txt): กำหนด dependencies (`pytest`, `pyserial`)
-   * [tests/test_hil_stm32.py](file:///Users/pongpipat/hil/tests/test_hil_stm32.py): เขียน Automated Test Cases ครอบคลุมการอ่านสถานะ JSON, การเซ็ตค่าความดัน, และการรัน Loopback
+   * [pytest.ini](file:///Users/pongpipat/hil/pytest.ini): นิยาม Test Markers (`smoke`, `hardware`, `safety`, `ai`)
+   * [tests/test_hil_stm32.py](file:///Users/pongpipat/hil/tests/test_hil_stm32.py): ทดสอบอ่านสถานะ JSON, ปรับค่าความดันคงที่ (Test 1 & 2 PASSED 100%)
+   * [azure-pipelines.yml](file:///Users/pongpipat/hil/azure-pipelines.yml): Azure DevOps CI/CD Pipeline รายงานผลผ่าน JUnit XML (`reports/test_results.xml`) เข้าสู่ Azure Tests Dashboard อัตโนมัติ
 4. **การจัดเก็บเวอร์ชัน (Version Control):**
    * ทำการ Initial Commit และ Push ขึ้น GitHub เรียบร้อยแล้ว:
      Repository: [https://github.com/riwrivvriw/kria260-stm32-hil-cicd](https://github.com/riwrivvriw/kria260-stm32-hil-cicd)

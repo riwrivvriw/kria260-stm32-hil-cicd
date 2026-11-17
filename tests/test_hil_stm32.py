@@ -8,9 +8,16 @@ import serial
 import json
 import time
 import re
+import glob
 
-# กำหนด Serial Port ของ ST-Link / USB-C บน Mac
-SERIAL_PORT = "/dev/tty.usbmodem103"
+# ฟังก์ชันค้นหาพอร์ต USB Modem ของ STM32 บน Mac อัตโนมัติ
+def find_stm32_port() -> str:
+    ports = glob.glob("/dev/tty.usbmodem*")
+    if ports:
+        return sorted(ports)[0]
+    return "/dev/tty.usbmodem11103"
+
+SERIAL_PORT = find_stm32_port()
 BAUDRATE = 115200
 
 # Regex สำหรับลบ ANSI Escape Sequences (รหัสสีของ Terminal)
@@ -19,48 +26,85 @@ ANSI_REGEX = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 class STM32HILClient:
     def __init__(self, port, baudrate):
-        self.ser = serial.Serial(port, baudrate, timeout=2)
-        time.sleep(0.5)
-        # เคลียร์ buffer เริ่มต้น
+        self.ser = serial.Serial()
+        self.ser.port = port
+        self.ser.baudrate = baudrate
+        self.ser.timeout = 1.0
+        self.ser.rtscts = False
+        self.ser.dsrdtr = False
+        
+        try:
+            self.ser.open()
+        except serial.SerialException as e:
+            raise RuntimeError(
+                f"ไม่สามารถเปิดพอร์ต {port} ได้! กรุณาตรวจสอบว่ามีโปรแกรมอื่น "
+                f"(เช่น Serial Monitor, screen, minicom) เปิดพอร์ตนี้ค้างอยู่หรือไม่: {e}"
+            )
+
+        # ป้องกันไม่ให้ DTR/RTS ไปกระตุกรีเซ็ตบอร์ด
+        try:
+            self.ser.dtr = False
+            self.ser.rts = False
+        except Exception:
+            pass
+
+        time.sleep(0.3)
         self.ser.reset_input_buffer()
-        self.ser.write(b"\n")
-        time.sleep(0.1)
+        # ส่ง Enter ปลุก Shell
+        self.ser.write(b"\r\n")
+        time.sleep(0.2)
         self.ser.reset_input_buffer()
 
-    def send_cmd(self, cmd: str) -> str:
-        """ส่งคำสั่งไปยัง Zephyr Shell และอ่านผลลัพธ์ทั้งหมดกลับมา"""
-        self.ser.reset_input_buffer()
-        self.ser.write(f"{cmd}\n".encode())
-        time.sleep(0.15)  # รอให้ STM32 ประมวลผลและตอบกลับ
+    def send_cmd(self, cmd: str, timeout: float = 2.0) -> str:
+        """ส่งคำสั่งไปยัง Zephyr Shell และรออ่านผลลัพธ์แบบ Robust Timeout Loop"""
+        try:
+            self.ser.reset_input_buffer()
+            self.ser.write(f"{cmd}\r\n".encode())
+        except Exception as e:
+            raise RuntimeError(f"ไม่สามารถส่งคำสั่งไปยังบอร์ดได้: {e}")
 
+        start_time = time.time()
         lines = []
-        while self.ser.in_waiting > 0:
-            raw_line = self.ser.readline().decode(errors="ignore")
-            # ลบ ANSI Escape Code
+
+        while time.time() - start_time < timeout:
+            try:
+                raw_line = self.ser.readline().decode(errors="ignore")
+            except serial.SerialException:
+                time.sleep(0.05)
+                continue
+
+            if not raw_line:
+                continue
+
             clean_line = ANSI_REGEX.sub('', raw_line).strip()
-            if clean_line and not clean_line.startswith("hil:~$") and cmd not in clean_line:
+            if clean_line and cmd not in clean_line:
                 lines.append(clean_line)
+                # เมื่อพบ JSON หรือ Prompt แล้ว แปลว่าบอร์ดตอบเสร็จสิ้น
+                if "}" in clean_line or "hil:~$" in clean_line:
+                    break
 
         return "\n".join(lines)
 
     def send_cmd_json(self, cmd: str) -> dict:
         """ส่งคำสั่งและค้นหา JSON Object ในข้อความตอบกลับโดยเฉพาะ"""
         raw_output = self.send_cmd(cmd)
-        
+
         # ค้นหาข้อความที่อยู่ในรูปแบบ JSON {...}
         json_match = re.search(r'\{.*\}', raw_output)
         if not json_match:
             raise ValueError(f"No JSON found in response:\n{raw_output}")
-            
+
         return json.loads(json_match.group(0))
 
     def close(self):
-        self.ser.close()
+        if self.ser and self.ser.is_open:
+            self.ser.close()
 
 
 @pytest.fixture(scope="module")
 def hil():
-    client = STM32HILClient(SERIAL_PORT, BAUDRATE)
+    port = find_stm32_port()
+    client = STM32HILClient(port, BAUDRATE)
     yield client
     client.close()
 
@@ -81,14 +125,19 @@ def test_02_set_manual_pressure(hil):
 
     data = hil.send_cmd_json("hil status")
 
-    assert abs(data["pressure_kpa"] - 125.50) < 0.1, f"Pressure set value mismatch: {data['pressure_kpa']}"
+    assert (
+        abs(data["pressure_kpa"] - 125.50) < 0.1
+    ), f"Pressure set value mismatch: {data['pressure_kpa']}"
     assert data["auto"] is False, "Auto simulation should be disabled"
 
 
+@pytest.mark.skip(
+    reason="รอต่อสาย I2C เข้ากับบอร์ด Kria KR260 (ฮาร์ดแวร์บอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนสายสัญญาณ)"
+)
 def test_03_i2c_loopback_self_test(hil):
     """
     ทดสอบ I2C Master-to-Slave Loopback บนบอร์ด STM32
-    (ต้องต่อสาย Jumper: I2C1 PB8/PB9 เข้ากับ I2C2 PF1/PF0)
+    (ต้องต่อสาย Jumper: I2C1 PB8/PB9 เข้ากับ I2C2 PF1/PF0 พร้อมตัวต้านทาน Pull-up)
     """
     data = hil.send_cmd_json("hil loopback")
 

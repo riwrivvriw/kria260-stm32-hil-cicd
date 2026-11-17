@@ -1,0 +1,66 @@
+# ==============================================================================
+# Azure DevOps CI/CD Pipeline สำหรับระบบ Hardware-In-The-Loop (HIL)
+# Kria KR260 (DUT) + STM32H563ZI (Plant Simulator)
+# ==============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+
+# รันบนเครื่อง Laptop ของคุณที่ลงทะเบียนเป็น Self-Hosted Agent ไว้
+pool:
+  name: 'Default' # กำหนดชื่อ Agent Pool เช่น 'HIL-Laptop-Pool'
+
+variables:
+  PYTHON_ENV: '$(System.DefaultWorkingDirectory)/.venv'
+  REPORT_FILE: '$(System.DefaultWorkingDirectory)/reports/test_results.xml'
+
+stages:
+# ------------------------------------------------------------------------------
+# Stage 1: รันชุดทดสอบ HIL ผ่าน Pytest และส่งออกผลเป็น JUnit XML
+# ------------------------------------------------------------------------------
+- stage: HIL_Testing
+  displayName: 'Hardware-In-The-Loop Test Suite'
+  jobs:
+  - job: Run_Pytest_Suite
+    displayName: 'Execute HIL Automated Tests'
+    timeoutInMinutes: 30
+    steps:
+    
+    # 1. ตรวจสอบและตั้งค่า Python Virtual Environment
+    - script: |
+        echo "=== 1. Checking Python Environment ==="
+        if [ ! -d "$(PYTHON_ENV)" ]; then
+            python3 -m venv $(PYTHON_ENV)
+        fi
+        source $(PYTHON_ENV)/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+      displayName: 'Setup Python & Dependencies'
+
+    # 2. รันชุดทดสอบ Pytest และส่งออกผลลัพธ์เป็นไฟล์ JUnit XML
+    - script: |
+        echo "=== 2. Running HIL Pytest Framework ==="
+        source $(PYTHON_ENV)/bin/activate
+        mkdir -p $(System.DefaultWorkingDirectory)/reports
+        
+        # รันการทดสอบและสร้างรายงาน JUnit XML
+        pytest tests/ -v --junitxml=$(REPORT_FILE)
+      displayName: 'Run Pytest (Generate JUnit XML)'
+
+    # 3. นำไฟล์ XML ไปแสดงผลในแท็บ "Tests" ของ Azure DevOps อัตโนมัติ
+    - task: PublishTestResults@2
+      condition: always() # ให้ทำงานเสมอแม้ว่า Test Case จะ FAILED
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '$(REPORT_FILE)'
+        testRunTitle: 'HIL Automated Test Run'
+        failTaskOnFailedTests: true
+      displayName: 'Publish Test Results to Azure Tests Dashboard'

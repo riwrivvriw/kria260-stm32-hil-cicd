@@ -94,6 +94,6 @@ source .venv/bin/activate
 # 2. ติดตั้ง Dependencies สำหรับการทดสอบ
 pip install -r requirements.txt
 
-# 3. รันการทดสอบ
-pytest tests/test_hil_stm32.py -v
+# 3. รันการทดสอบและสร้างรายงาน JUnit XML สำหรับ Azure DevOps
+pytest tests/ -v --junitxml=reports/test_results.xml
 ```
