@@ -47,9 +47,9 @@
 ### ✅ Phase 1: STM32 Simulator & Test Harness (เสร็จสมบูรณ์ 100%)
 
 1. **Zephyr RTOS I2C Target, State Machine & Subsystems:**
-   * [src/main.c](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/src/main.c):
+   * [src/main.c](file:///Users/pongpipat/hil/src/main.c):
      * พัฒนา I2C Target (Slave) Address `0x58` ด้วย `eeprom_target_write_data()` ขนาดขยาย 8 Bytes (0x00 - 0x07)
-     * รองรับคำสั่ง Zephyr Shell (`hil status`, `hil set_state`, `hil set_pressure`, `hil inject_leak`, `hil audio_leak`, `hil set_start_stop`, `hil set_estop`, `hil set_solenoid`, `hil reset`, `hil loopback`) ตอบกลับเป็น JSON String
+     * รองรับคำสั่ง Zephyr Shell (`hil status`, `hil set_state`, `hil set_pressure`, `hil inject_leak`, `hil audio_leak`, `hil set_start_stop`, `hil set_estop`, `hil set_solenoid`, `hil reset`, `hil loopback`, `hil test_interfaces`) ตอบกลับเป็น JSON String
      * มี Simulation Thread ความถี่ 20 Hz (50 ms) คอยอัปเดตโมเดลทางฟิสิกส์, FSM, และ I2C Memory Buffer
    * [src/gi_state_machine.h](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/src/gi_state_machine.h) & [src/gi_state_machine.c](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/src/gi_state_machine.c):
      * ออกแบบและพัฒนา Finite State Machine (FSM) 6 สถานะสำหรับกระเพาะ/ลำไส้ (GI) และกล้องเอนโดสโคป:
@@ -131,33 +131,35 @@
 
 ```mermaid
 flowchart TD
-    T1["Task 2.1: บูต KR260 PetaLinux และทดสอบ SSH"]
-    T2["Task 2.2: ต่อสายฮาร์ดแวร์ (I2C, PWM, Start/Stop, Solenoid, E-Stop, Audio)"]
-    T3["Task 2.3: ตรวจสอบ I2C Addr 0x58 และ Register 0x00-0x07 บน KR260"]
-    T4["Task 2.4: ติดตั้ง v4l2loopback บน KR260 และสตรีม tools/video_stream_mock.py"]
-    T5["Task 3.1: รัน Closed-Loop HIL Test และส่งออก reports/test_results.csv"]
+    T1["Step 1: แฟลช STM32 Firmware & รัน hil test_interfaces"]
+    T2["Step 2: บูต KR260 PetaLinux และทดสอบ SSH"]
+    T3["Step 3: ต่อสาย Jumper 8 เส้นข้ามบอร์ด (Wiring Map)"]
+    T4["Step 4: ทดสอบ First Handshake I2C Addr 0x58"]
+    T5["Step 5: ทดสอบ 4 Test Cases (HIL-TC-01 ถึง TC-04)"]
+    T6["Step 6: รัน E2E Pytest & ส่งออก reports/test_results.csv"]
 
-    T1 --> T2 --> T3 --> T4 --> T5
+    T1 --> T2 --> T3 --> T4 --> T5 --> T6
 ```
 
-* [ ] **Task 2.1: เตรียมบอร์ด Kria KR260**
-  * เขียนอิมเมจ PetaLinux ลง MicroSD Card เสียบเข้า KR260 และเปิดเครื่อง
-  * เสียบสาย LAN เข้า Router/Laptop และทดสอบ SSH: `ssh petalinux@<KR260_IP>`
-* [ ] **Task 2.2: เชื่อมต่อสาย Jumper ตามตาราง Wiring Map**
-  * SCL (`PB8` $\leftrightarrow$ RPi Pin 5)
-  * SDA (`PB9` $\leftrightarrow$ RPi Pin 3)
-  * PWM (`PF15` $\leftrightarrow$ PMOD1 Pin 1)
-  * Start/Stop (`PB13` $\leftrightarrow$ PMOD1 Pin 3)
-  * Solenoid Valve (`PE11` $\leftrightarrow$ PMOD1 Pin 2)
-  * E-Stop (`PE9` $\leftrightarrow$ PMOD1 Pin 4)
-  * Leak Audio (`PA4` $\leftrightarrow$ Audio / ADC In)
-  * GND (`GND` $\leftrightarrow$ `GND`)
-* [ ] **Task 2.3: ทดสอบ First Handshake ข้ามบอร์ด**
+* [ ] **Step 1: แฟลชเฟิร์มแวร์ลงบอร์ด Nucleo-H563ZI และทดสอบอินเทอร์เฟซ**
+  * รัน `make flash` (หรือ `west flash`) เพื่อเบิร์นไบนารีลง STM32
+  * เปิด Serial Console (115200 8N1) พิมพ์ `hil test_interfaces` ตรวจสอบสถานะ Loopback ว่าขึ้น `READY`
+* [ ] **Step 2: เตรียมบอร์ด Kria KR260**
+  * เขียนอิมเมจ PetaLinux / Kria Ubuntu ลง MicroSD Card เสียบเข้า KR260 และเปิดเครื่อง
+  * เสียบสาย LAN เข้า Router/Laptop และทดสอบ SSH: `ssh petalinux@192.168.1.120`
+* [ ] **Step 3: เชื่อมต่อสาย Jumper ตามตาราง Wiring Map (8 สัญญาณ)**
+  * I2C: SCL (`PB8` $\leftrightarrow$ RPi Pin 5), SDA (`PB9` $\leftrightarrow$ RPi Pin 3)
+  * Actuators: PWM (`PF15` $\leftrightarrow$ PMOD1 Pin 1), Solenoid Valve (`PE11` $\leftrightarrow$ PMOD1 Pin 2)
+  * Controls: Start/Stop (`PB13` $\leftrightarrow$ PMOD1 Pin 3), E-Stop (`PE9` $\leftrightarrow$ PMOD1 Pin 4)
+  * Audio & Ground: Leak Audio (`PA4` $\leftrightarrow$ Audio/ADC In), Common GND (`GND` $\leftrightarrow$ `GND`)
+* [ ] **Step 4: ตรวจสอบ First Handshake ข้ามบอร์ด**
   * รัน `sudo i2cdetect -y -r 1` บน KR260 ต้องพบ Address `0x58`
-  * รันสคริปต์ `pressure_sensor.py` อ่านค่าทั้ง 8 ไบต์ (Chip ID, Status, Pressure, State, Duty, Target, IO)
-* [ ] **Task 2.4: ติดตั้งและทดสอบ Video Injection บน KR260**
-  * รัน `sudo modprobe v4l2loopback video_nr=10`
-  * รันสคริปต์ `python tools/video_stream_mock.py --target-ip <KR260_IP>` สตรีมภาพกล้องเอนโดสโคปเสมือนเข้า `/dev/video10`
-* [ ] **Task 3.1: รัน End-to-End Pytest HIL และตรวจสอบ CSV Report**
-  * รัน `python -m pytest tests/test_hil_stm32.py --csv=reports/test_results.csv`
-  * ตรวจสอบผลทดสอบและค่า Telemetry metrics ใน `reports/test_results.csv`
+  * อ่านค่าหน่วยความจำ 8 ไบต์: `sudo i2cget -y 1 0x58 0x00` (ได้ `0x58`) และอ่านค่าแรงดัน `0x02`, `0x03`
+* [ ] **Step 5: รันทดสอบ 4 Test Cases มาตรฐาน (อ้างอิง testcases.txt)**
+  * **HIL-TC-01 (Normal / Optimal GI):** สั่ง Start $\rightarrow$ ระบบตรวจพบโพรงปกติ $\rightarrow$ เลี้ยงแรงดันคงที่ 12 mmHg (~125 kPa) เข้าสู่ State 2 (HOLD) $\rightarrow$ Solenoid ปิด
+  * **HIL-TC-02 (Low Pressure / Inflate):** ส่งแรงดันต่ำ 2 mmHg $\rightarrow$ KR260 ขับ High PWM เร่งปั๊มลมเพื่อขยายโพรง (State 1: INFLATE)
+  * **HIL-TC-03 (Gas Leak Event):** STM32 ขับเสียง Sine 3 kHz (PA4) + แรงดันตก 6 mmHg $\rightarrow$ KR260 ตรวจพบเสียงรั่ว $\rightarrow$ แสดง LEAKAGE ALERT และบูสต์ PWM ชดเชย (State 4: LEAKAGE)
+  * **HIL-TC-04 (Over-Expansion / Deflate):** ส่งแรงดันสูงเกิน 25 mmHg (~140 kPa) $\rightarrow$ KR260 ตัด PWM เหลือ 0% $\rightarrow$ ส่ง LOW (0V) ไปยัง PE11 เพื่อเปิดวาล์ว Solenoid (Normally Open) ระบายก๊าซทิ้ง (State 3: DEFLATE)
+* [ ] **Step 6: รัน Full Automated Pytest Testbench & CI/CD Export**
+  * รันคำสั่ง `make test` เพื่อทดสอบระบบแบบอัตโนมัติ
+  * ตรวจสอบรายงานผลใน [reports/test_results.csv](file:///Users/pongpipat/hil/reports/test_results.csv) พร้อมส่งขึ้น Azure DevOps Pipeline
