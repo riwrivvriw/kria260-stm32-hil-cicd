@@ -103,7 +103,7 @@ void gi_state_machine_set_state(gi_state_t new_state)
 }
 
 void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
-                             bool start_stop_pin, bool estop_pin)
+                             bool start_stop_pin, bool estop_pin, bool solenoid_valve_pin)
 {
     k_mutex_lock(&g_sm_mutex, K_FOREVER);
 
@@ -111,6 +111,7 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
     g_status.pwm_freq_hz = pwm_freq;
     g_status.start_stop_io = start_stop_pin;
     g_status.estop_active = estop_pin;
+    g_status.solenoid_valve_open = solenoid_valve_pin;
 
     // 1. ตรวจสอบ Emergency Stop (ความสำคัญสูงสุด)
     if (estop_pin || g_status.current_pressure_kpa >= OVERPRESSURE_LIMIT_KPA) {
@@ -126,7 +127,6 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
     // 2. State Machine Transitions
     switch (g_status.state) {
     case GI_STATE_IDLE:
-        g_status.solenoid_valve_open = false;
         g_status.audio_leak_active = false;
         // เริ่มต้นเมื่อได้รับสัญญาณ Start IO หรือ KR260 เริ่มขับ PWM ปั๊มลม
         if (start_stop_pin || pump_duty > 0.05f) {
@@ -136,7 +136,6 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
         break;
 
     case GI_STATE_INSUFFLATION:
-        g_status.solenoid_valve_open = false;
         if (g_status.leak_active) {
             g_status.state = GI_STATE_LEAK_EVENT;
             g_status.audio_leak_active = true;
@@ -153,7 +152,6 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
         break;
 
     case GI_STATE_STABLE_INSPECTION:
-        g_status.solenoid_valve_open = false;
         g_status.audio_leak_active = false;
         if (g_status.leak_active) {
             g_status.state = GI_STATE_LEAK_EVENT;

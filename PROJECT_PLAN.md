@@ -63,7 +63,8 @@
    * [src/audio_leak.h](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/src/audio_leak.h) & [src/audio_leak.c](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/src/audio_leak.c):
      * สร้างสัญญาณเสียงรั่ว AC Audio Waveform Sine wave ขนาด 16 จุด 12-bit LUT (ความถี่หลัก 3 kHz) ผ่าน DAC1 Channel 1 (พิน `PA4`)
    * [src/io_controller.h](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/src/io_controller.h) & [src/io_controller.c](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/src/io_controller.c):
-     * จัดการสัญญาณ Start/Stop (`PB13`), Solenoid Valve (`PE11`), และ E-Stop (`PE9`) ทั้งจากพินฮาร์ดแวร์จริงและ Software Mock Override
+     * จัดการสัญญาณ Start/Stop (`PB13`), Solenoid Purge Valve (`PE11`), และ E-Stop (`PE9`) ทั้งจากพินฮาร์ดแวร์จริงและ Software Mock Override
+     * รองรับวงจรขับ Solenoid Valve แบบ Normally Open (NO) ผ่าน N-Channel MOSFET: KR260 ส่ง HIGH (3.3V) = ปิดวาล์วกักลม, ส่ง LOW (0V) = เปิดวาล์วระบายลมฉุกเฉิน/Over-Expansion Deflate
    * [app.overlay](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/app.overlay): แมปพิน I2C1, I2C2, GPIO Start/Stop, Solenoid, E-Stop, และ PWM Capture
    * [prj.conf](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/prj.conf): เปิดใช้งาน CBPRINTF_FP, DAC, GPIO, I2C Target, Zephyr Shell
    * [zephyrRTOS.md](file:///c:/Users/th62034660/Desktop/kria260-stm32-hil-cicd/zephyrRTOS.md): คู่มือเจาะลึกอธิบายสถาปัตยกรรมเฟิร์มแวร์

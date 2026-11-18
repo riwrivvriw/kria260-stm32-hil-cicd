@@ -81,14 +81,10 @@ static void plant_sim_thread_entry(void *p1, void *p2, void *p3)
         uint32_t pwm_freq = kr260_pwm_get_frequency_hz();
         bool start_stop_io = io_controller_get_start_stop();
         bool estop_io = io_controller_get_estop();
-        bool solenoid_cmd = io_controller_get_solenoid_valve();
-
-        if (solenoid_cmd) {
-            gi_state_machine_set_solenoid(true);
-        }
+        bool solenoid_open = io_controller_get_solenoid_valve();
 
         // 2. อัปเดต Finite State Machine
-        gi_state_machine_update(dt, pump_duty, pwm_freq, start_stop_io, estop_io);
+        gi_state_machine_update(dt, pump_duty, pwm_freq, start_stop_io, estop_io, solenoid_open);
 
         // 3. อ่านสถานะปัจจุบันของระบบ
         gi_system_status_t sys_stat;

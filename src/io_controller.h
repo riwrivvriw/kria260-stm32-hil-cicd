@@ -29,7 +29,11 @@ bool io_controller_get_start_stop(void);
 bool io_controller_get_estop(void);
 
 /**
- * @brief อ่านสถานะสัญญาณ Solenoid Valve Command จาก KR260
+ * @brief อ่านสถานะ Solenoid Valve Command จาก KR260 (Physical Pin หรือ Mock Override)
+ * @note วาล์ว Solenoid ทำงานผ่านวงจรขับ N-Channel MOSFET แบบ Normally Open (NO):
+ *       - ระดับแรงดัน HIGH (3.3V) -> MOSFET นำกระแส -> ขดลวดดึงแกน "ปิดวาล์ว" (Holding Gas)
+ *       - ระดับแรงดัน LOW (0V)    -> MOSFET ดับ       -> ขดลวดคลายตัว "เปิดวาล์ว" (Venting Gas / Over-Expansion)
+ * @return true = วาล์วเปิดระบายก๊าซ (Vent / Active Release), false = วาล์วปิดกักก๊าซ (Holding Pressure)
  */
 bool io_controller_get_solenoid_valve(void);
 
