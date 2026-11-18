@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "kr260/kr260_pwm_receiver.h"
 #include "gi_state_machine.h"

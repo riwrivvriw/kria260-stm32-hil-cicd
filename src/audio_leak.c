@@ -8,7 +8,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
-#if DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
+#if defined(CONFIG_DAC) && DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
 #include <zephyr/drivers/dac.h>
 static const struct device *dac_dev = DEVICE_DT_GET(DT_NODELABEL(dac1));
 #define DAC_CHANNEL_ID 1
@@ -23,11 +23,13 @@ static uint32_t g_freq_hz = 3000;
 #define AUDIO_STACK_SIZE 1024
 #define AUDIO_PRIORITY   5
 
+#if defined(CONFIG_DAC) && DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
 /* ตาราง Sine Wave 16 จุด ความละเอียด 12-bit (0 - 4095) */
 static const uint16_t SINE_LUT_16[16] = {
     2048, 2831, 3495, 3939, 4095, 3939, 3495, 2831,
     2048, 1264,  600,  156,    0,  156,  600, 1264
 };
+#endif
 
 static void audio_thread_entry(void *p1, void *p2, void *p3)
 {
@@ -40,7 +42,7 @@ static void audio_thread_entry(void *p1, void *p2, void *p3)
 
     while (1) {
         if (g_audio_enabled) {
-#if DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
+#if defined(CONFIG_DAC) && DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
             if (device_is_ready(dac_dev)) {
                 dac_write_value(dac_dev, DAC_CHANNEL_ID, SINE_LUT_16[idx]);
             }
@@ -49,7 +51,7 @@ static void audio_thread_entry(void *p1, void *p2, void *p3)
             /* ปรับช่วงเวลาสอดคล้องกับความถี่ 3 kHz (คาบเวลา ~333 us / 16 จุด = ~20 us) */
             k_busy_wait(20);
         } else {
-#if DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
+#if defined(CONFIG_DAC) && DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
             if (device_is_ready(dac_dev)) {
                 dac_write_value(dac_dev, DAC_CHANNEL_ID, 0);
             }
@@ -67,7 +69,7 @@ int audio_leak_init(void)
 {
     g_audio_enabled = false;
 
-#if DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
+#if defined(CONFIG_DAC) && DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
     if (device_is_ready(dac_dev)) {
         struct dac_channel_cfg dac_cfg = {
             .channel_id = DAC_CHANNEL_ID,
