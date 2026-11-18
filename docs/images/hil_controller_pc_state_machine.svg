@@ -1,59 +1,79 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1150" width="100%" height="100%" style="background-color: #ffffff; font-family: 'Segoe UI', Arial, sans-serif;">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1450" width="100%" height="100%" style="background-color: #ffffff; font-family: 'Segoe UI', Arial, sans-serif;">
   <defs>
     <!-- Arrow marker definition -->
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 1.5 L 10 5 L 0 8.5 z" fill="#000000" />
     </marker>
   </defs>
 
   <style>
     .state-box { fill: #ffffff; stroke: #000000; stroke-width: 2.5px; }
-    .state-title { font-size: 15px; font-weight: bold; fill: #000000; text-anchor: middle; dominant-baseline: middle; }
-    .state-sub { font-size: 12.5px; font-weight: 500; fill: #333333; text-anchor: middle; dominant-baseline: middle; }
-    .label-text { font-size: 12.5px; font-weight: 500; fill: #000000; }
+    .state-title { font-size: 16px; font-weight: bold; fill: #000000; text-anchor: middle; dominant-baseline: middle; }
+    .state-sub { font-size: 13px; font-weight: 500; fill: #444444; text-anchor: middle; dominant-baseline: middle; }
+    .label-text { font-size: 13.5px; font-weight: 500; fill: #000000; }
+    .label-sub { font-size: 12px; font-weight: normal; fill: #555555; }
     .flow-line { stroke: #000000; stroke-width: 2.5px; fill: none; }
+    .text-shield { fill: #ffffff; }
   </style>
 
-  <!-- STATE 3: Top Box -->
-  <rect x="290" y="50" width="560" height="110" class="state-box" />
-  <text x="570" y="93" class="state-title">STATE 3: ACQUIRE TELEMETRY &amp; CAPTURE FEEDBACK</text>
-  <text x="570" y="118" class="state-sub">(READ STM32 UART SERIAL &amp; KR260 SSH TELEMETRY)</text>
+  <!-- Flow Lines drawn first -->
+  <!-- 1. Start Circle Arrow -> State 1 -->
+  <line x1="218" y1="847" x2="490" y2="847" class="flow-line" marker-end="url(#arrow)" />
 
-  <!-- Transition: State 3 -> State 4 -->
-  <line x1="570" y1="160" x2="570" y2="310" class="flow-line" marker-end="url(#arrow)" />
-  <text x="585" y="240" class="label-text">Telemetry Parsed &amp; Actuator Metrics Extracted</text>
+  <!-- 2. State 3 -> State 4 Arrow -->
+  <line x1="880" y1="215" x2="880" y2="430" class="flow-line" marker-end="url(#arrow)" />
+
+  <!-- 3. State 4 -> State 1 Arrow -->
+  <line x1="880" y1="565" x2="880" y2="780" class="flow-line" marker-end="url(#arrow)" />
+
+  <!-- 4. State 1 -> State 2 Arrow -->
+  <line x1="880" y1="915" x2="880" y2="1130" class="flow-line" marker-end="url(#arrow)" />
+
+  <!-- 5. Loopback Arrow: State 2 -> Left -> Up -> State 3 -->
+  <path d="M 490 1197 L 110 1197 L 110 147 L 490 147" class="flow-line" marker-end="url(#arrow)" />
+
+  <!-- STATE 3: Top Box -->
+  <rect x="490" y="80" width="780" height="135" class="state-box" />
+  <text x="880" y="132" class="state-title">STATE 3: ACQUIRE TELEMETRY &amp; CAPTURE FEEDBACK</text>
+  <text x="880" y="162" class="state-sub">(READ STM32 UART SERIAL &amp; KR260 SSH TELEMETRY)</text>
 
   <!-- STATE 4: Upper-Middle Box -->
-  <rect x="290" y="310" width="560" height="110" class="state-box" />
-  <text x="570" y="353" class="state-title">STATE 4: EVALUATE ASSERTIONS &amp; LOG TEST REPORT</text>
-  <text x="570" y="378" class="state-sub">(VALIDATE MEDICAL SAFETY &amp; EXPORT CSV METRICS)</text>
-
-  <!-- Transition: State 4 -> State 1 -->
-  <line x1="570" y1="420" x2="570" y2="570" class="flow-line" marker-end="url(#arrow)" />
-  <text x="585" y="500" class="label-text">Safety Evaluated &amp; CSV Metric Appended</text>
-
-  <!-- Start Circle into State 1 -->
-  <circle cx="120" cy="625" r="22" stroke="#000000" stroke-width="2.5" fill="#ffffff" />
-  <line x1="142" y1="625" x2="290" y2="625" class="flow-line" marker-end="url(#arrow)" />
-  <text x="155" y="612" class="label-text">HIL Suite Init &amp; Ports Ready</text>
+  <rect x="490" y="430" width="780" height="135" class="state-box" />
+  <text x="880" y="482" class="state-title">STATE 4: EVALUATE ASSERTIONS &amp; LOG TEST REPORT</text>
+  <text x="880" y="512" class="state-sub">(VALIDATE MEDICAL SAFETY &amp; EXPORT CSV METRICS)</text>
 
   <!-- STATE 1: Lower-Middle Box -->
-  <rect x="290" y="570" width="560" height="110" class="state-box" />
-  <text x="570" y="613" class="state-title">STATE 1: DISPATCH TEST COMMAND &amp; STIMULI</text>
-  <text x="570" y="638" class="state-sub">(INJECT FAULT / SETPOINT / IO HANDSHAKE)</text>
-
-  <!-- Transition: State 1 -> State 2 -->
-  <line x1="570" y1="680" x2="570" y2="830" class="flow-line" marker-end="url(#arrow)" />
-  <text x="585" y="760" class="label-text">Command Dispatched &amp; Scenario Step Initiated</text>
+  <rect x="490" y="780" width="780" height="135" class="state-box" />
+  <text x="880" y="832" class="state-title">STATE 1: DISPATCH TEST COMMAND &amp; STIMULI</text>
+  <text x="880" y="862" class="state-sub">(INJECT FAULT / SETPOINT / IO HANDSHAKE)</text>
 
   <!-- STATE 2: Bottom Box -->
-  <rect x="290" y="830" width="560" height="110" class="state-box" />
-  <text x="570" y="873" class="state-title">STATE 2: SYNC VIDEO STREAM &amp; SENSOR STIMULUS</text>
-  <text x="570" y="898" class="state-sub">(GENERATE SYNTHETIC ENDOSCOPY OVER UDP 5000)</text>
+  <rect x="490" y="1130" width="780" height="135" class="state-box" />
+  <text x="880" y="1182" class="state-title">STATE 2: SYNC VIDEO STREAM &amp; SENSOR STIMULUS</text>
+  <text x="880" y="1212" class="state-sub">(GENERATE SYNTHETIC ENDOSCOPY OVER UDP 5000)</text>
 
-  <!-- Loopback: State 2 -> Left -> Up -> State 3 -->
-  <path d="M 290 885 L 60 885 L 60 105 L 290 105" class="flow-line" marker-end="url(#arrow)" />
-  <text x="75" y="470" class="label-text" transform="rotate(-90 75,470)" text-anchor="middle">
-    Video Frames Streamed &amp; Plant Settled (Proceed to Telemetry Acquisition)
-  </text>
+  <!-- Start Circle -->
+  <circle cx="194" cy="847" r="24" stroke="#000000" stroke-width="2.5" fill="#ffffff" />
+
+  <!-- Labels with Protective Background Shields (Zero overlapping with lines) -->
+  <!-- Label: Start Arrow -->
+  <rect x="235" y="805" width="220" height="28" class="text-shield" />
+  <text x="240" y="825" class="label-text">HIL Suite Init &amp; Ports Ready</text>
+
+  <!-- Label: State 3 -> State 4 -->
+  <rect x="490" y="308" width="365" height="30" class="text-shield" />
+  <text x="855" y="328" class="label-text" text-anchor="end">Telemetry Parsed and Actuator Feedback Extracted</text>
+
+  <!-- Label: State 4 -> State 1 -->
+  <rect x="500" y="658" width="355" height="30" class="text-shield" />
+  <text x="855" y="678" class="label-text" text-anchor="end">Safety Criteria Evaluated &amp; CSV Record Appended</text>
+
+  <!-- Label: State 1 -> State 2 -->
+  <rect x="905" y="1008" width="370" height="30" class="text-shield" />
+  <text x="910" y="1028" class="label-text" text-anchor="start">Command Dispatched &amp; Scenario Step Initiated</text>
+
+  <!-- Label: Loopback Line -->
+  <rect x="130" y="650" width="330" height="48" class="text-shield" />
+  <text x="135" y="672" class="label-text">Video Frames Streamed &amp; Plant Settled</text>
+  <text x="135" y="692" class="label-sub">(Proceed to Telemetry Acquisition)</text>
 </svg>
