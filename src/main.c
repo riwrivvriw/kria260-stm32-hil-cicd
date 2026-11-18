@@ -339,6 +339,42 @@ static int cmd_hil_loopback(const struct shell *sh, size_t argc, char **argv)
     return ret;
 }
 
+static int cmd_hil_test_interfaces(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    uint16_t raw_pressure = 0;
+    uint8_t chip_id = 0;
+    int i2c_ret = run_i2c_loopback_test(&raw_pressure, &chip_id);
+    const char *i2c_status = (i2c_ret == 0 && chip_id == TARGET_I2C_ADDR) ? "PASS" : "WAIT_WIRING";
+
+    bool io_start = io_controller_get_start_stop();
+    bool io_sol = io_controller_get_solenoid_valve();
+    bool io_estop = io_controller_get_estop();
+
+    float pwm_duty = kr260_pwm_get_duty_cycle();
+    uint32_t pwm_freq = kr260_pwm_get_frequency_hz();
+    bool pwm_active = kr260_pwm_is_signal_active();
+
+    bool dac_active = audio_leak_is_active();
+
+    shell_print(sh,
+        "{\"interface_loopback_test\": {"
+        "\"i2c_target_0x58\": \"%s\", "
+        "\"io_lines\": {\"start_stop\": %s, \"solenoid\": %s, \"estop\": %s}, "
+        "\"pwm_capture\": {\"active\": %s, \"duty_pct\": %.2f, \"freq_hz\": %u}, "
+        "\"dac_audio_leak\": {\"active\": %s}, "
+        "\"status\": \"READY\"}}",
+        i2c_status,
+        io_start ? "true" : "false", io_sol ? "true" : "false", io_estop ? "true" : "false",
+        pwm_active ? "true" : "false", (double)(pwm_duty * 100.0f), pwm_freq,
+        dac_active ? "true" : "false"
+    );
+
+    return 0;
+}
+
 /* ลงทะเบียนคำสั่ง CLI ย่อย */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
     SHELL_CMD(status, NULL, "Get full HIL plant status (JSON)", cmd_hil_status),
@@ -351,6 +387,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
     SHELL_CMD(set_solenoid, NULL, "Set Solenoid Purge Valve <0|1>", cmd_hil_solenoid),
     SHELL_CMD(reset, NULL, "Reset plant simulator to default IDLE", cmd_hil_reset),
     SHELL_CMD(loopback, NULL, "Execute I2C loopback test", cmd_hil_loopback),
+    SHELL_CMD(test_interfaces, NULL, "Execute all interface loopback & status tests", cmd_hil_test_interfaces),
     SHELL_SUBCMD_SET_END
 );
 

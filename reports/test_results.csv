@@ -1,7 +1,7 @@
 timestamp,suite,test_name,status,duration_sec,message,telemetry_data
-2026-11-17 17:24:58,test_hil_stm32,test_01_read_hil_status,SKIPPED,0.0047,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
-2026-11-17 17:24:58,test_hil_stm32,test_02_set_manual_pressure,SKIPPED,0.0003,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
-2026-11-17 17:24:58,test_hil_stm32,test_03_state_machine_transitions,SKIPPED,0.0002,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
-2026-11-17 17:24:58,test_hil_stm32,test_04_leak_injection_and_audio,SKIPPED,0.0002,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
-2026-11-17 17:24:58,test_hil_stm32,test_05_mock_control_ios,SKIPPED,0.0002,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
-2026-11-17 17:24:58,test_hil_stm32,test_06_i2c_loopback_self_test,SKIPPED,0.0002,Skipped: รอต่อสาย I2C เข้ากับบอร์ด Kria KR260 (ฮาร์ดแวร์บอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนสายสัญญาณ),
+2026-11-18 14:26:46,test_hil_stm32,test_01_read_hil_status,SKIPPED,0.0040,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
+2026-11-18 14:26:46,test_hil_stm32,test_02_set_manual_pressure,SKIPPED,0.0002,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
+2026-11-18 14:26:46,test_hil_stm32,test_03_state_machine_transitions,SKIPPED,0.0002,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
+2026-11-18 14:26:46,test_hil_stm32,test_04_leak_injection_and_audio,SKIPPED,0.0002,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
+2026-11-18 14:26:46,test_hil_stm32,test_05_mock_control_ios,SKIPPED,0.0002,Skipped: ไม่พบพอร์ต STM32 ST-Link/Nucleo เชื่อมต่ออยู่บนเครื่อง (กรุณาเสียบสาย USB หรือตั้งค่า HIL_PORT),
+2026-11-18 14:26:46,test_hil_stm32,test_06_i2c_loopback_self_test,SKIPPED,0.0002,Skipped: รอต่อสาย I2C เข้ากับบอร์ด Kria KR260 (ฮาร์ดแวร์บอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนสายสัญญาณ),
