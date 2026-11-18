@@ -1,71 +1,124 @@
 # ==============================================================================
-# Makefile for GI Detect & HIL System (RTL Simulation)
-# Directory: hil/Makefile
+# Makefile for HIL Testbench & Firmware Project
+# 1. Zephyr RTOS STM32H563ZI Firmware (Build & Flash)
+# 2. KR260 SystemVerilog RTL Simulation (Icarus Verilog & GTKWave/Surfer)
 # ==============================================================================
 
-# เครื่องมือที่ใช้
+SHELL := /bin/bash
+
+# ------------------------------------------------------------------------------
+# การตั้งค่า Zephyr RTOS สำหรับ STM32 Nucleo-H563ZI
+# ------------------------------------------------------------------------------
+BOARD           ?= nucleo_h563zi
+ZEPHYR_ENV_SH   ?= ~/stm32/zephyr/zephyr-env.sh
+ZEPHYR_VENV     ?= ~/stm32/.venv/bin/activate
+
+# คำสั่งโหลด Environment และ Virtual Environment
+ZEPHYR_ENV_CMD  = source $(ZEPHYR_ENV_SH) && source $(ZEPHYR_VENV)
+
+# ------------------------------------------------------------------------------
+# การตั้งค่า SystemVerilog Simulation (KR260 FPGA Fabric)
+# ------------------------------------------------------------------------------
 IVERILOG = iverilog
 VVP      = vvp
 GTKWAVE  = gtkwave
 SURFER   = surfer
-
-# แฟล็กสำหรับ SystemVerilog (IEEE 1800-2012)
 IVFLAGS  = -g2012 -Wall
 
-# โครงสร้างโฟลเดอร์และไฟล์
 RTL_DIR  = hardware/rtl
 SIM_DIR  = hardware/sim
-
 RTL_SRCS = $(RTL_DIR)/pwm_controller.sv
 TB_SRCS  = $(SIM_DIR)/tb_pwm_controller.sv
-
-# ไฟล์เอาต์พุต
 SIM_OUT  = $(SIM_DIR)/sim.out
 VCD_FILE = $(SIM_DIR)/pwm_wave.vcd
 
-# Phony targets ป้องกันชื่อซ้ำกับไฟล์จริง
-.PHONY: all compile sim wave surfer clean help
+# ------------------------------------------------------------------------------
+# Phony Targets
+# ------------------------------------------------------------------------------
+.PHONY: all help build build-inc flash build-flash clean-build \
+        compile sim wave surfer clean
 
-# คำสั่งเริ่มต้น (เมื่อพิมพ์ make เฉยๆ จะทำการคอมไพล์และรันจำลอง)
-all: sim
+# คำสั่งเริ่มต้น: แสดง Help เมนู
+all: help
 
-# 1. คอมไพล์ไฟล์ SystemVerilog ทั้งหมดเป็นไฟล์ไบนารี sim.out
+# ==============================================================================
+# 1. Zephyr RTOS / STM32 Firmware Commands
+# ==============================================================================
+
+# คอมไพล์เฟิร์มแวร์แบบ Clean Build (Pristine: -p always)
+build:
+	@echo "=== [Zephyr] Building Firmware for $(BOARD) (Pristine Always) ==="
+	@$(SHELL) -c "$(ZEPHYR_ENV_CMD) && west build -p always -b $(BOARD) ."
+
+# คอมไพล์แบบ Incremental (เร็วขึ้น ไม่ล้างแคชเดิม)
+build-inc:
+	@echo "=== [Zephyr] Incremental Building for $(BOARD) ==="
+	@$(SHELL) -c "$(ZEPHYR_ENV_CMD) && west build -b $(BOARD) ."
+
+# แฟลชเฟิร์มแวร์ลงบอร์ด Nucleo-H563ZI ผ่าน ST-Link
+flash:
+	@echo "=== [Zephyr] Flashing Firmware to $(BOARD) ==="
+	@$(SHELL) -c "$(ZEPHYR_ENV_CMD) && west flash"
+
+# คอมไพล์แบบ Clean Build แล้วแฟลชลงบอร์ดทันที
+build-flash: build flash
+
+# ลบโฟลเดอร์ build ของ Zephyr
+clean-build:
+	@echo "=== [Zephyr] Removing build directory ==="
+	rm -rf build/
+
+# ==============================================================================
+# 2. RTL SystemVerilog Simulation Commands
+# ==============================================================================
+
 compile: $(SIM_OUT)
 
 $(SIM_OUT): $(RTL_SRCS) $(TB_SRCS)
-	@echo "=== [1/2] Compiling SystemVerilog RTL & Testbench ==="
+	@echo "=== [RTL] Compiling SystemVerilog RTL & Testbench ==="
 	$(IVERILOG) $(IVFLAGS) -o $(SIM_OUT) $(RTL_SRCS) $(TB_SRCS)
 
-# 2. รัน Simulation ด้วย vvp เพื่อสร้างไฟล์คลื่นสัญญาณ .vcd
 sim: $(SIM_OUT)
-	@echo "=== [2/2] Running Simulation (vvp) ==="
+	@echo "=== [RTL] Running Simulation (vvp) ==="
 	$(VVP) $(SIM_OUT)
 
-# 3. เปิดดูกราฟใน GTKWave (ถ้ารัน sim ยังไม่เสร็จ จะสั่งรันให้อัตโนมัติ)
 wave: $(VCD_FILE)
-	@echo "=== Opening Waveform in GTKWave ==="
+	@echo "=== [RTL] Opening Waveform in GTKWave ==="
 	$(GTKWAVE) $(VCD_FILE) &
 
-# ทางเลือกเสริม: เปิดดูกราฟด้วย Surfer บน macOS
 surfer: $(VCD_FILE)
-	@echo "=== Opening Waveform in Surfer ==="
+	@echo "=== [RTL] Opening Waveform in Surfer ==="
 	$(SURFER) $(VCD_FILE) &
 
-# สร้างไฟล์ .vcd หากยังไม่มีหรือโค้ดมีการแก้ไข
 $(VCD_FILE): $(RTL_SRCS) $(TB_SRCS)
 	$(MAKE) sim
 
-# 4. ลบไฟล์ที่สร้างจากการจำลองทั้งหมด
-clean:
-	@echo "=== Cleaning simulation artifacts ==="
+clean-sim:
+	@echo "=== [RTL] Cleaning simulation artifacts ==="
 	rm -f $(SIM_OUT) $(VCD_FILE)
 
-# แสดงรายการคำสั่งที่ใช้ได้
+clean: clean-build clean-sim
+
+# ==============================================================================
+# 3. Help Menu
+# ==============================================================================
 help:
-	@echo "Available targets:"
-	@echo "  make          - คอมไพล์และรัน Simulation (สร้างไฟล์ .vcd)"
-	@echo "  make compile  - คอมไพล์โค้ดอย่างเดียวเพื่อเช็ก Syntax"
-	@echo "  make sim      - คอมไพล์และรัน vvp"
-	@echo "  make wave     - รัน Simulation (ถ้าโค้ดเปลี่ยน) และเปิด GTKWave"
-	@echo "  make surfer   - รัน Simulation (ถ้าโค้ดเปลี่ยน) และเปิด Surfer"
-	@echo "  make clean    - ลบไฟล์ sim.out และ .vcd"
+	@echo "=================================================================="
+	@echo " HIL Project Makefile - Commands Overview"
+	@echo "=================================================================="
+	@echo " [Zephyr RTOS / STM32H563ZI Firmware]"
+	@echo "   make build        : คอมไพล์แบบ Pristine (west build -p always -b $(BOARD) .)"
+	@echo "   make build-inc    : คอมไพล์แบบ Incremental (west build -b $(BOARD) .)"
+	@echo "   make flash        : แฟลชเฟิร์มแวร์ลงบอร์ด (west flash)"
+	@echo "   make build-flash  : คอมไพล์ Pristine แล้วแฟลชลงบอร์ดทันที"
+	@echo "   make clean-build  : ลบโฟลเดอร์ build/"
+	@echo ""
+	@echo " [KR260 RTL SystemVerilog Simulation]"
+	@echo "   make sim          : คอมไพล์และรัน Simulation (vvp -> pwm_wave.vcd)"
+	@echo "   make wave         : รัน Simulation และเปิดดูคลื่นสัญญาณใน GTKWave"
+	@echo "   make surfer       : รัน Simulation และเปิดดูคลื่นสัญญาณใน Surfer"
+	@echo "   make clean-sim    : ลบไฟล์ sim.out และ pwm_wave.vcd"
+	@echo ""
+	@echo " [General]"
+	@echo "   make clean        : ลบทั้ง build/ และ simulation artifacts"
+	@echo "=================================================================="
