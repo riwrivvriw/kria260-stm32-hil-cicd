@@ -8,7 +8,7 @@
 
 | Task ID | Linked Req ID | Task Name | Actionable Scope & Deliverable | Start | End | Status | Comment |
 |:---:|:---:|---|---|:---:|:---:|:---:|---|
-| **TASK-A05** | **HIL-002** | STM32H563ZI Plant Simulator Firmware | Develop STM32 firmware to read KR260 PWM/GPIO commands, parse UART test API commands, and simulate pressure (I2C), leak audio (AC), and Start/Stop IO. | 11/17/2026 | 11/20/2026 | Just started | Design state machine for mock camera inside gi and pumping gas |
+| **TASK-A05** | **HIL-002** | STM32H563ZI Plant Simulator Firmware | Develop STM32 firmware to read KR260 PWM/GPIO commands, parse UART test API commands, and simulate pressure (I2C), leak audio (AC), and Start/Stop IO. | 11/17/2026 | 11/20/2026 | **Finished (100%)** | Completed: PWM capture (PF15), I2C 0x58 target, AC leak audio (PA4), Normally-Open Solenoid Purge Valve (PE11), 6-state GI FSM, and Zephyr Shell Test API |
 
 ---
 

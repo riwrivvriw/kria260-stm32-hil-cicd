@@ -92,7 +92,14 @@ bool io_controller_get_solenoid_valve(void)
     }
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_solenoid))
     if (gpio_is_ready_dt(&solenoid_gpio)) {
-        return (gpio_pin_get_dt(&solenoid_gpio) > 0);
+        /*
+         * วงจรฮาร์ดแวร์ Solenoid Valve:
+         * ชนิด Normally Open (NO) ผ่าน N-Channel MOSFET:
+         * - ขาเกต HIGH (3.3V) -> MOSFET ON -> ขดลวดดึงแกน "ปิดวาล์ว" (Holding Gas, valve_open = false)
+         * - ขาเกต LOW (0V)    -> MOSFET OFF -> ขดลวดคลายแกน "เปิดวาล์ว" (Venting Gas, valve_open = true)
+         */
+        int pin_level = gpio_pin_get_dt(&solenoid_gpio);
+        return (pin_level == 0); /* LOW = วาล์วเปิดระบายก๊าซทิ้ง (Over-Expansion Deflate) */
     }
 #endif
     return g_mock_solenoid;

@@ -71,15 +71,16 @@ const char* gi_state_get_camera_scene(gi_state_t state);
 void gi_state_machine_set_state(gi_state_t new_state);
 
 /**
- * @brief คำนวณและอัปเดต State Machine ตามสภาวะอินพุตจาก KR260 (PWM, IO, E-Stop)
+ * @brief คำนวณและอัปเดต State Machine ตามสภาวะอินพุตจาก KR260 (PWM, IO, E-Stop, Solenoid)
  * @param dt คาบเวลาการคำนวณในหน่วยวินาที (เช่น 0.05s)
  * @param pump_duty ค่า Duty Cycle ที่วัดได้จาก KR260 (0.0 - 1.0)
  * @param pwm_freq ค่าความถี่ PWM (Hz)
  * @param start_stop_pin ลอจิกขา Start/Stop IO จาก KR260
  * @param estop_pin ลอจิกขา E-Stop จาก KR260
+ * @param solenoid_valve_pin ลอจิกสถานะวาล์วเปิดระบายก๊าซ (true = เปิดวาล์วระบาย / Vent)
  */
 void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
-                             bool start_stop_pin, bool estop_pin);
+                             bool start_stop_pin, bool estop_pin, bool solenoid_valve_pin);
 
 /**
  * @brief ดึงข้อมูลสถานะทั้งหมดแบบ Thread-safe
