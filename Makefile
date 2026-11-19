@@ -48,7 +48,7 @@ VCD_FILE = $(SIM_DIR)/pwm_wave.vcd
 # ------------------------------------------------------------------------------
 .PHONY: all help build build-inc flash flash-msd build-flash clean-build \
         compile sim wave surfer clean-sim clean \
-        venv install-deps test test-interfaces test-button test-setup clean-test
+        venv install-deps test test-standalone test-interfaces test-button test-scenarios test-quick test-setup clean-test
 
 # คำสั่งเริ่มต้น: แสดง Help เมนู
 all: help
@@ -125,6 +125,17 @@ test: venv
 	@mkdir -p $(REPORTS_DIR)
 	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/ -v --csv=$(CSV_REPORT)"
 
+# รันการทดสอบ STM32 ทั้งหมดแบบ Standalone (ไม่ต้องต่อบอร์ด KR260)
+test-standalone: venv
+	@echo "=== [Pytest] Running All Standalone STM32 Tests (No KR260 Required) ==="
+	@mkdir -p $(REPORTS_DIR)
+	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/ -v -s --csv=$(CSV_REPORT)"
+
+# รันการทดสอบอย่างรวดเร็วและพิมพ์ผลลัพธ์ลง Terminal ทันที (ไม่ต้องเปิด screen)
+test-quick: venv
+	@echo "=== [Quick Test] Executing Rapid Standalone Validation on STM32 ==="
+	@$(SHELL) -c "$(VENV_ACTIVATE) && $(PYTHON) tools/quick_test.py"
+
 # รันเฉพาะการทดสอบ hil test_interfaces
 test-interfaces: venv
 	@echo "=== [Pytest] Running Only 'hil test_interfaces' Diagnostics ==="
@@ -134,6 +145,11 @@ test-interfaces: venv
 test-button: venv
 	@echo "=== [Pytest] Running Doctor Start/Stop Button Tests ==="
 	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/test_hil_stm32.py -k test_08_mock_doctor_button -v -s"
+
+# รัน Data-Driven Clinical Scenarios จากไฟล์ tests/clinical_scenarios.json
+test-scenarios: venv
+	@echo "=== [Pytest] Running Data-Driven Clinical Scenarios (from clinical_scenarios.json) ==="
+	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/test_hil_stm32.py -k test_09_data_driven_clinical_scenarios -v -s"
 
 # 4. คำสั่ง All-in-One: ติดตั้ง Dependencies และรัน Test ต่อเนื่อง
 test-setup: install-deps test
@@ -191,11 +207,12 @@ help:
 	@echo "   make clean-build  : ลบโฟลเดอร์ build/"
 	@echo ""
 	@echo " [Python HIL Pytest Automation]"
-	@echo "   make venv            : สร้างโฟลเดอร์ .venv สำหรับทดสอบ"
-	@echo "   make install-deps    : ติดตั้ง dependencies จาก requirements.txt"
-	@echo "   make test            : รัน pytest tests/ -v --csv=reports/test_results.csv"
-	@echo "   make test-interfaces : รันเฉพาะการทดสอบ 'hil test_interfaces' (Loopback Check)"
+	@echo "   make test            : รันชุดทดสอบทั้งหมด และบันทึกรายงาน CSV"
+	@echo "   make test-standalone : รันการทดสอบทั้งหมดแบบ Standalone (ไม่ต้องต่อ KR260)"
+	@echo "   make test-quick      : รันการทดสอบด่วนใน 2 วินาที พิมพ์ผลลงจอทันที (ไม่ต้องเปิด screen)"
+	@echo "   make test-scenarios  : รัน Data-Driven Scenarios จาก tests/clinical_scenarios.json"
 	@echo "   make test-button     : รันเฉพาะการทดสอบ Mock Doctor Start/Stop Button"
+	@echo "   make test-interfaces : รันเฉพาะการทดสอบ 'hil test_interfaces' (Loopback Check)"
 	@echo "   make test-setup      : ติดตั้ง deps พร้อมรันการทดสอบทันที"
 	@echo "   make clean-test      : ลบ .pytest_cache และรายงาน CSV"
 	@echo ""

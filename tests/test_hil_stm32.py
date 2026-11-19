@@ -323,3 +323,64 @@ def test_08_mock_doctor_button(hil, csv_record):
     csv_record({"doctor_button_test": "PASSED", "start_stop_cycle": "OK"})
 
 
+def load_clinical_scenarios():
+    scenarios_path = os.path.join(os.path.dirname(__file__), "clinical_scenarios.json")
+    if os.path.exists(scenarios_path):
+        with open(scenarios_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+CLINICAL_SCENARIOS = load_clinical_scenarios()
+
+
+@pytest.mark.parametrize("sc", CLINICAL_SCENARIOS, ids=[s["id"] for s in CLINICAL_SCENARIOS])
+def test_09_data_driven_clinical_scenarios(hil, csv_record, sc):
+    """
+    Data-Driven Test Case Loader:
+    โหลดและรัน Test Cases จากไฟล์ tests/clinical_scenarios.json โดยอัตโนมัติ
+    รองรับการขยายชุดทดสอบในอนาคตได้ไม่จำกัดโดยไม่ต้องแก้โค้ด Python
+    """
+    # 1. ส่งคำสั่ง Scenario ไปยัง STM32
+    cmd = sc["scenario_cmd"]
+    res = hil.send_cmd(cmd)
+    assert "OK" in res, f"Failed to execute {cmd}: {res}"
+
+    try:
+        # 2. อ่านสถานะ Telemetry ล่าสุด
+        status = hil.send_cmd_json("hil status")
+
+        # 3. ตรวจสอบเงื่อนไขตามที่กำหนดใน JSON
+        assert status["state"] == sc["expected_state"], (
+            f"State mismatch for {sc['id']}: expected {sc['expected_state']}, got {status['state']}"
+        )
+
+        pressure = status["pressure_kpa"]
+        min_p = sc["expected_min_pressure"]
+        max_p = sc["expected_max_pressure"]
+        assert min_p <= pressure <= max_p, (
+            f"Pressure out of range for {sc['id']}: {pressure} kPa (expected [{min_p}, {max_p}])"
+        )
+
+        assert status["leak"] is sc["expected_leak"], (
+            f"Leak flag mismatch for {sc['id']}: expected {sc['expected_leak']}, got {status['leak']}"
+        )
+
+        assert status["audio_active"] is sc["expected_audio"], (
+            f"Audio active mismatch for {sc['id']}: expected {sc['expected_audio']}, got {status['audio_active']}"
+        )
+
+        # 4. บันทึกผลลัพธ์ลง CSV Report
+        csv_record({
+            "scenario_id": sc["id"],
+            "scenario_name": sc["name"],
+            "tested_pressure": pressure,
+            "tested_state": status["state"],
+            "leak_active": status["leak"],
+            "audio_active": status["audio_active"],
+        })
+    finally:
+        # รีเซ็ตระบบกลับสู่สถานะ IDLE เพื่อไม่ให้ส่งผลกระทบต่อ Scenario ถัดไป
+        hil.send_cmd("hil reset")
+
+
+

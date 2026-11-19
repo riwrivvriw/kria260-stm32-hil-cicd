@@ -21,7 +21,7 @@ static bool g_audio_enabled = false;
 static uint32_t g_freq_hz = 3000;
 
 #define AUDIO_STACK_SIZE 1024
-#define AUDIO_PRIORITY   5
+#define AUDIO_PRIORITY   10
 
 #if defined(CONFIG_DAC) && DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
 /* ตาราง Sine Wave 16 จุด ความละเอียด 12-bit (0 - 4095) */
@@ -48,15 +48,15 @@ static void audio_thread_entry(void *p1, void *p2, void *p3)
             }
 #endif
             idx = (idx + 1) & 0x0F;
-            /* ปรับช่วงเวลาสอดคล้องกับความถี่ 3 kHz (คาบเวลา ~333 us / 16 จุด = ~20 us) */
-            k_busy_wait(20);
+            /* Sleep เพื่อคืน CPU Time ให้ Zephyr Shell และ Simulation Threads ทำงานได้ปกติ ไม่เกิด CPU Starvation */
+            k_msleep(10);
         } else {
 #if defined(CONFIG_DAC) && DT_NODE_HAS_STATUS(DT_NODELABEL(dac1), okay)
             if (device_is_ready(dac_dev)) {
                 dac_write_value(dac_dev, DAC_CHANNEL_ID, 0);
             }
 #endif
-            k_msleep(20);
+            k_msleep(50);
         }
     }
 }

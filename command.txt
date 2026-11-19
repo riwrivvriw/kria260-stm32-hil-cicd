@@ -37,7 +37,19 @@
    hil set_start_stop <0|1>
      -> Legacy alias for Doctor Button control (1 = 3.3V, 0 = 0V).
 
-3. FSM State & Physical Overrides:
+3. Clinical Named Scenarios:
+   hil scenario <normal|low_pressure|over_expansion|gas_leak|tube_kink|cough_spike> [custom_val]
+     -> Loads clinical scenario by name, sets medical starting conditions in C,
+        and executes real-time differential equation physics dynamically.
+        Examples:
+          hil scenario normal           (Target 125 kPa, stable mucosal inspection)
+          hil scenario low_pressure     (110 kPa, tests KR260 ramping up pump)
+          hil scenario over_expansion   (152 kPa, tests emergency solenoid venting)
+          hil scenario gas_leak         (125 kPa, drains at 22 kPa/s + 3 kHz DAC hiss)
+          hil scenario tube_kink        (Flat 101.3 kPa, tests occlusion timeout)
+          hil scenario cough_spike      (160 kPa transient spike)
+
+4. FSM State & Physical Overrides:
    hil set_state <IDLE|INSUFFLATE|INSPECT|LEAK|DEFLATE|ESTOP>
      -> Manually force clinical state machine transition.
 
@@ -68,6 +80,10 @@
 1. Make Targets (Fastest Execution):
    make test-button
      -> Runs only Doctor Start/Stop button test (test_08_mock_doctor_button).
+
+   make test-scenarios
+     -> Runs all Data-Driven Clinical Scenarios defined in tests/clinical_scenarios.json
+        (HIL-TC-01 through HIL-TC-06).
 
    make test-interfaces
      -> Runs only interface diagnostics test (test_07_test_interfaces).

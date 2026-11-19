@@ -362,6 +362,23 @@ static int cmd_hil_loopback(const struct shell *sh, size_t argc, char **argv)
     return ret;
 }
 
+static int cmd_hil_scenario(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil scenario <normal|low_pressure|over_expansion|gas_leak|tube_kink|cough_spike> [custom_val]");
+        return -EINVAL;
+    }
+
+    float custom_val = (argc >= 3) ? strtof(argv[2], NULL) : 0.0f;
+    int ret = gi_state_machine_apply_scenario(argv[1], custom_val);
+    if (ret == 0) {
+        shell_print(sh, "OK: Scenario '%s' loaded and running dynamically", argv[1]);
+    } else {
+        shell_error(sh, "Unknown scenario '%s'. Available: normal, low_pressure, over_expansion, gas_leak, tube_kink, cough_spike", argv[1]);
+    }
+    return ret;
+}
+
 static int cmd_hil_test_interfaces(const struct shell *sh, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
@@ -401,6 +418,7 @@ static int cmd_hil_test_interfaces(const struct shell *sh, size_t argc, char **a
 /* ลงทะเบียนคำสั่ง CLI ย่อย */
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
     SHELL_CMD(status, NULL, "Get full HIL plant status (JSON)", cmd_hil_status),
+    SHELL_CMD(scenario, NULL, "Apply named clinical scenario <normal|low_pressure|over_expansion|gas_leak|...>", cmd_hil_scenario),
     SHELL_CMD(set_state, NULL, "Force FSM state <IDLE|INSUFFLATE|INSPECT|LEAK|DEFLATE|ESTOP>", cmd_hil_set_state),
     SHELL_CMD(set_pressure, NULL, "Set fixed pressure value in kPa", cmd_hil_set_pressure),
     SHELL_CMD(inject_leak, NULL, "Inject or clear gas leak <0|1>", cmd_hil_inject_leak),

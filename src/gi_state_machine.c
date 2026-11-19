@@ -4,6 +4,9 @@
  */
 
 #include "gi_state_machine.h"
+#include "io_controller.h"
+#include <strings.h>
+#include <string.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(gi_state_machine, LOG_LEVEL_INF);
@@ -245,6 +248,76 @@ void gi_state_machine_get_status(gi_system_status_t *out_status)
     k_mutex_lock(&g_sm_mutex, K_FOREVER);
     *out_status = g_status;
     k_mutex_unlock(&g_sm_mutex);
+}
+
+int gi_state_machine_apply_scenario(const char *name, float custom_val)
+{
+    if (!name) return -EINVAL;
+
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+
+    // เมื่อเริ่ม Scenario ทางคลินิก ระบบถือว่าแพทย์เริ่มการตรวจ (Doctor Start = true)
+    g_status.start_stop_io = true;
+    io_controller_set_doctor_button(true);
+
+    if (strcasecmp(name, "normal") == 0) {
+        g_status.state = GI_STATE_STABLE_INSPECTION;
+        g_status.current_pressure_kpa = (custom_val > 0) ? custom_val : DEFAULT_TARGET_KPA;
+        g_status.leak_active = false;
+        g_status.audio_leak_active = false;
+        g_status.solenoid_valve_open = false;
+        g_status.auto_simulation = true;
+        LOG_INF("Scenario applied: NORMAL (P=%.2f kPa)", (double)g_status.current_pressure_kpa);
+    } else if (strcasecmp(name, "low_pressure") == 0) {
+        g_status.state = GI_STATE_INSUFFLATION;
+        g_status.current_pressure_kpa = (custom_val > 0) ? custom_val : 110.0f;
+        g_status.leak_active = false;
+        g_status.audio_leak_active = false;
+        g_status.solenoid_valve_open = false;
+        g_status.auto_simulation = true;
+        LOG_INF("Scenario applied: LOW_PRESSURE (P=%.2f kPa)", (double)g_status.current_pressure_kpa);
+    } else if (strcasecmp(name, "over_expansion") == 0) {
+        // เมื่อความดันเกินเพดานความปลอดภัย (150 kPa) ระบบจะตัดเข้า EMERGENCY_STOP เพื่อระบายก๊าซทิ้ง
+        g_status.current_pressure_kpa = (custom_val > 0) ? custom_val : 152.0f;
+        g_status.state = GI_STATE_EMERGENCY_STOP;
+        g_status.leak_active = false;
+        g_status.audio_leak_active = false;
+        g_status.solenoid_valve_open = true;
+        g_status.auto_simulation = true;
+        LOG_INF("Scenario applied: OVER_EXPANSION (P=%.2f kPa, Safety Hazard Cutoff)", (double)g_status.current_pressure_kpa);
+    } else if (strcasecmp(name, "gas_leak") == 0) {
+        g_status.state = GI_STATE_LEAK_EVENT;
+        g_status.current_pressure_kpa = (custom_val > 0) ? custom_val : 125.0f;
+        g_status.leak_active = true;
+        g_status.audio_leak_active = true;
+        g_status.solenoid_valve_open = false;
+        g_status.auto_simulation = true;
+        LOG_INF("Scenario applied: GAS_LEAK (P=%.2f kPa, Audio Leak Active)", (double)g_status.current_pressure_kpa);
+    } else if (strcasecmp(name, "tube_kink") == 0) {
+        g_status.state = GI_STATE_INSUFFLATION;
+        g_status.current_pressure_kpa = (custom_val > 0) ? custom_val : AMBIENT_PRESSURE_KPA;
+        g_status.leak_active = false;
+        g_status.audio_leak_active = false;
+        g_status.solenoid_valve_open = false;
+        g_status.auto_simulation = false; // Block pressure rise to simulate occlusion
+        LOG_INF("Scenario applied: TUBE_KINK / OCCLUSION (P=%.2f kPa, Flat)", (double)g_status.current_pressure_kpa);
+    } else if (strcasecmp(name, "cough_spike") == 0) {
+        // อาการไอชั่วคราว ดันขึ้นสูงใกล้ขอบเขตปลอดภัย (145 kPa) แต่ยังไม่ตัดฉุกเฉิน
+        g_status.state = GI_STATE_STABLE_INSPECTION;
+        g_status.current_pressure_kpa = (custom_val > 0) ? custom_val : 145.0f;
+        g_status.leak_active = false;
+        g_status.audio_leak_active = false;
+        g_status.solenoid_valve_open = false;
+        g_status.auto_simulation = true;
+        LOG_INF("Scenario applied: COUGH_SPIKE (P=%.2f kPa, Transient)", (double)g_status.current_pressure_kpa);
+    } else {
+        k_mutex_unlock(&g_sm_mutex);
+        return -ENOENT;
+    }
+
+    g_status.camera_scene = gi_state_get_camera_scene(g_status.state);
+    k_mutex_unlock(&g_sm_mutex);
+    return 0;
 }
 
 void gi_state_machine_inject_leak(bool active)

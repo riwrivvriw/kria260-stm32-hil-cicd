@@ -1,0 +1,74 @@
+[
+  {
+    "id": "HIL-TC-01",
+    "name": "Normal / Optimal Mucosal Inspection",
+    "scenario_cmd": "hil scenario normal",
+    "expected_state": "STABLE_INSPECTION",
+    "expected_min_pressure": 115.0,
+    "expected_max_pressure": 130.0,
+    "expected_leak": false,
+    "expected_audio": false,
+    "expected_auto_sim": true,
+    "description": "Validates steady-state insufflation at 125 kPa. In standalone mode without KR260 pump active, mucosal absorption naturally decays pressure toward 118 kPa."
+  },
+  {
+    "id": "HIL-TC-02",
+    "name": "Low Pressure Under-Inflation",
+    "scenario_cmd": "hil scenario low_pressure",
+    "expected_state": "INSUFFLATION",
+    "expected_min_pressure": 105.0,
+    "expected_max_pressure": 115.0,
+    "expected_leak": false,
+    "expected_audio": false,
+    "expected_auto_sim": true,
+    "description": "Simulates under-inflated lumen at 110 kPa. KR260 PID should detect pressure deficit and ramp pump PWM to >60% to restore target distension."
+  },
+  {
+    "id": "HIL-TC-03",
+    "name": "Colon Wall Gas Leak & Acoustic Hiss",
+    "scenario_cmd": "hil scenario gas_leak",
+    "expected_state": "LEAK_EVENT",
+    "expected_min_pressure": 95.0,
+    "expected_max_pressure": 130.0,
+    "expected_leak": true,
+    "expected_audio": true,
+    "expected_auto_sim": true,
+    "description": "Injects an acute gas leak. STM32 generates 3 kHz acoustic hiss on DAC PA4 and drains pressure at 22 kPa/s. Tests Vitis AI acoustic classifier and PID feedforward compensation."
+  },
+  {
+    "id": "HIL-TC-04",
+    "name": "Acute Over-Expansion Hazard Relief",
+    "scenario_cmd": "hil scenario over_expansion",
+    "expected_state": "EMERGENCY_STOP",
+    "expected_min_pressure": 100.0,
+    "expected_max_pressure": 160.0,
+    "expected_leak": false,
+    "expected_audio": false,
+    "expected_auto_sim": true,
+    "description": "Injects hazard-level pressure of 152 kPa (>150 kPa safety ceiling). Tests safety interlock triggering EMERGENCY_STOP and opening Solenoid Valve, which rapidly vents gas to ambient (101.3 kPa)."
+  },
+  {
+    "id": "HIL-TC-05",
+    "name": "Tube Occlusion / Kinked Delivery Hose",
+    "scenario_cmd": "hil scenario tube_kink",
+    "expected_state": "INSUFFLATION",
+    "expected_min_pressure": 100.0,
+    "expected_max_pressure": 103.0,
+    "expected_leak": false,
+    "expected_audio": false,
+    "expected_auto_sim": false,
+    "description": "Simulates a kinked insufflation tube: Air pump runs high, but bowel pressure stays flat at ambient (101.3 kPa). Tests KR260 occlusion timeout and clinician alert."
+  },
+  {
+    "id": "HIL-TC-06",
+    "name": "Patient Spasm / Cough Pressure Transient",
+    "scenario_cmd": "hil scenario cough_spike",
+    "expected_state": "STABLE_INSPECTION",
+    "expected_min_pressure": 130.0,
+    "expected_max_pressure": 150.0,
+    "expected_leak": false,
+    "expected_audio": false,
+    "expected_auto_sim": true,
+    "description": "Simulates sudden patient muscular spasm or cough causing a 145 kPa transient spike. Tests transient response and absorption decay back toward stable baseline."
+  }
+]

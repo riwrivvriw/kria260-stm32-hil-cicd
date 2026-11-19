@@ -88,6 +88,14 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
 void gi_state_machine_get_status(gi_system_status_t *out_status);
 
 /**
+ * @brief โหลดและสั่งรัน Scenario ทางคลินิกตามชื่อ (Dynamic Clinical Scenario)
+ * @param name ชื่อ Scenario (เช่น "normal", "low_pressure", "over_expansion", "gas_leak", "tube_kink", "cough_spike")
+ * @param custom_val ค่าพารามิเตอร์ความดันเริ่มต้น (กำหนด 0.0f เพื่อใช้ค่า Default ของ Scenario นั้น)
+ * @return 0 เมื่อสำเร็จ, -ENOENT หากไม่พบชื่อ Scenario
+ */
+int gi_state_machine_apply_scenario(const char *name, float custom_val);
+
+/**
  * @brief สั่งจำลองการรั่วของก๊าซ (Leak Injection)
  */
 void gi_state_machine_inject_leak(bool active);
