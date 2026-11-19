@@ -48,7 +48,7 @@ VCD_FILE = $(SIM_DIR)/pwm_wave.vcd
 # ------------------------------------------------------------------------------
 .PHONY: all help build build-inc flash build-flash clean-build \
         compile sim wave surfer clean-sim clean \
-        venv install-deps test test-setup clean-test
+        venv install-deps test test-interfaces test-setup clean-test
 
 # คำสั่งเริ่มต้น: แสดง Help เมนู
 all: help
@@ -103,6 +103,11 @@ test: venv
 	@echo "=== [Pytest] Running HIL Testbench & Generating CSV Report ==="
 	@mkdir -p $(REPORTS_DIR)
 	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/ -v --csv=$(CSV_REPORT)"
+
+# รันเฉพาะการทดสอบ hil test_interfaces
+test-interfaces: venv
+	@echo "=== [Pytest] Running Only 'hil test_interfaces' Diagnostics ==="
+	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/test_hil_stm32.py -k test_07_test_interfaces -v -s"
 
 # 4. คำสั่ง All-in-One: ติดตั้ง Dependencies และรัน Test ต่อเนื่อง
 test-setup: install-deps test
@@ -159,11 +164,12 @@ help:
 	@echo "   make clean-build  : ลบโฟลเดอร์ build/"
 	@echo ""
 	@echo " [Python HIL Pytest Automation]"
-	@echo "   make venv         : สร้างโฟลเดอร์ .venv สำหรับทดสอบ"
-	@echo "   make install-deps : ติดตั้ง dependencies จาก requirements.txt"
-	@echo "   make test         : รัน pytest tests/ -v --csv=reports/test_results.csv"
-	@echo "   make test-setup   : ติดตั้ง deps พร้อมรันการทดสอบทันที"
-	@echo "   make clean-test   : ลบ .pytest_cache และรายงาน CSV"
+	@echo "   make venv            : สร้างโฟลเดอร์ .venv สำหรับทดสอบ"
+	@echo "   make install-deps    : ติดตั้ง dependencies จาก requirements.txt"
+	@echo "   make test            : รัน pytest tests/ -v --csv=reports/test_results.csv"
+	@echo "   make test-interfaces : รันเฉพาะการทดสอบ 'hil test_interfaces' (Loopback Check)"
+	@echo "   make test-setup      : ติดตั้ง deps พร้อมรันการทดสอบทันที"
+	@echo "   make clean-test      : ลบ .pytest_cache และรายงาน CSV"
 	@echo ""
 	@echo " [KR260 RTL SystemVerilog Simulation]"
 	@echo "   make sim          : คอมไพล์และรัน Simulation (vvp -> pwm_wave.vcd)"

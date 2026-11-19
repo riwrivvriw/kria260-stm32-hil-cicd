@@ -291,3 +291,17 @@ def test_06_i2c_loopback_self_test(hil, csv_record):
 
     assert data["loopback"] == "PASS", f"I2C Loopback test failed: {data}"
     assert data["read_chip_id"] == "0x58"
+
+
+def test_07_test_interfaces(hil, csv_record):
+    """ทดสอบคำสั่ง hil test_interfaces ตรวจสอบสถานะ Loopback ทุก Interface พร้อมกัน"""
+    data = hil.send_cmd_json("hil test_interfaces")
+    csv_record(data)
+
+    assert "interface_loopback_test" in data, "interface_loopback_test key missing in response"
+    diag = data["interface_loopback_test"]
+    assert diag.get("status") == "READY", f"Interfaces not READY: {diag}"
+    assert "io_lines" in diag, "io_lines missing from diagnostics"
+    assert "pwm_capture" in diag, "pwm_capture missing from diagnostics"
+    assert "dac_audio_leak" in diag, "dac_audio_leak missing from diagnostics"
+
