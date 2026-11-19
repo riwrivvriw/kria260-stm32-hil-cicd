@@ -321,6 +321,7 @@ static int cmd_hil_solenoid(const struct shell *sh, size_t argc, char **argv)
     }
 
     int val = atoi(argv[1]);
+    io_controller_set_mock_solenoid(val != 0);
     gi_state_machine_set_solenoid(val != 0);
     shell_print(sh, "OK: Solenoid Valve set to %d", val);
     return 0;

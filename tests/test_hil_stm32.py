@@ -90,6 +90,7 @@ class STM32HILClient:
     def send_cmd(self, cmd: str, timeout: float = 2.0) -> str:
         """ส่งคำสั่งไปยัง Zephyr Shell และรออ่านผลลัพธ์แบบ Robust Timeout Loop"""
         try:
+            time.sleep(0.04)
             self.ser.reset_input_buffer()
             self.ser.write(f"{cmd}\r\n".encode())
         except Exception as e:
@@ -102,18 +103,22 @@ class STM32HILClient:
             try:
                 raw_line = self.ser.readline().decode(errors="ignore")
             except serial.SerialException:
-                time.sleep(0.05)
+                time.sleep(0.02)
                 continue
 
             if not raw_line:
                 continue
 
             clean_line = ANSI_REGEX.sub('', raw_line).strip()
-            if clean_line and cmd not in clean_line:
-                lines.append(clean_line)
-                # เมื่อพบ JSON หรือ Prompt แล้ว แปลว่าบอร์ดตอบเสร็จสิ้น
-                if "}" in clean_line or "hil:~$" in clean_line:
-                    break
+            if not clean_line or clean_line == cmd:
+                continue
+
+            lines.append(clean_line)
+
+            # ตรวจสอบว่าได้รับผลลัพธ์ของคำสั่ง (JSON หรือ OK/Error/FAIL) แล้วจึงปิดท้ายเมื่อพบ Prompt
+            has_response = any("{" in l or "OK" in l or "Error" in l or "FAIL" in l or "Usage" in l for l in lines)
+            if has_response and ("hil:~$" in clean_line or "}" in clean_line):
+                break
 
         return "\n".join(lines)
 
@@ -182,67 +187,101 @@ def test_01_read_hil_status(hil, csv_record):
 
 def test_02_set_manual_pressure(hil, csv_record):
     """ทดสอบสั่งปรับค่าความดันคงที่ ตรวจสอบว่าค่าอัปเดตจริง และบันทึกลง CSV"""
-    hil.send_cmd("hil set_pressure 128.50")
+    try:
+        hil.send_cmd("hil set_pressure 128.50")
 
-    data = hil.send_cmd_json("hil status")
+        data = hil.send_cmd_json("hil status")
 
-    csv_record({
-        "target_pressure": 128.50,
-        "measured_pressure_kpa": data.get("pressure_kpa"),
-        "auto": data.get("auto"),
-    })
+        csv_record({
+            "target_pressure": 128.50,
+            "measured_pressure_kpa": data.get("pressure_kpa"),
+            "auto": data.get("auto"),
+        })
 
-    assert (
-        abs(data["pressure_kpa"] - 128.50) < 0.2
-    ), f"Pressure set value mismatch: {data['pressure_kpa']}"
-    assert data["auto"] is False, "Auto simulation should be disabled after manual set"
+        assert (
+            abs(data["pressure_kpa"] - 128.50) < 0.2
+        ), f"Pressure set value mismatch: {data['pressure_kpa']}"
+        assert data["auto"] is False, "Auto simulation should be disabled after manual set"
+    finally:
+        hil.send_cmd("hil reset")
 
 
 def test_03_state_machine_transitions(hil, csv_record):
-    """ทดสอบการเปลี่ยนสถานะ State Machine ผ่านคำสั่ง API (hil set_state)"""
-    # 1. ทดสอบเปลี่ยนเป็น INSUFFLATE
+    """ทดสอบการเปลี่ยนสถานะ State Machine ผ่านคำสั่ง API (hil set_state) เมื่อแพทย์เริ่มการตรวจ (Start=1)"""
+    hil.send_cmd("hil reset")
+    # 0. แพทย์กดปุ่ม Start เพื่อเข้าสู่กระบวนการตรวจก่อน
+    hil.send_cmd("hil button start")
+
+    try:
+        # 1. ทดสอบเปลี่ยนเป็น INSUFFLATE (ที่ความดันบรรยากาศ เริ่มสูบลมขยายโพรง)
+        hil.send_cmd("hil set_state INSUFFLATE")
+        data_insuf = hil.send_cmd_json("hil status")
+        assert data_insuf["state"] == "INSUFFLATION"
+        assert data_insuf["camera_scene"] == "LUMEN_EXPANDING_INSUFFLATION"
+
+        # 2. ความดันถึงเป้าหมายการตรวจ (125 kPa) ก่อนเข้าสู่โหมดส่องตรวจคงที่ (INSPECT)
+        # หากความดันต่ำกว่า 117 kPa ตัว FSM จะตัดกลับไปเร่งปั๊ม (INSUFFLATION) อัตโนมัติเพื่อความปลอดภัย
+        hil.send_cmd("hil set_pressure 125.00")
+        hil.send_cmd("hil set_state INSPECT")
+        data_insp = hil.send_cmd_json("hil status")
+        assert data_insp["state"] == "STABLE_INSPECTION"
+        assert data_insp["camera_scene"] == "MUCOSAL_INSPECTION_POLYP_ACTIVE"
+
+        # 3. ทดสอบเปลี่ยนกลับสู่ IDLE
+        hil.send_cmd("hil set_state IDLE")
+        data_idle = hil.send_cmd_json("hil status")
+        assert data_idle["state"] == "IDLE"
+
+        csv_record({
+            "fsm_check": "INSUFFLATE -> INSPECT -> IDLE Passed",
+            "last_camera_scene": data_idle["camera_scene"]
+        })
+    finally:
+        hil.send_cmd("hil reset")
+
+
+def test_03b_safety_interlock_when_stopped(hil, csv_record):
+    """
+    ทดสอบระบบนิรภัย (Safety Interlock):
+    หากแพทย์ยังไม่ได้กด Start (Start = 0) และไม่มีการปั๊มลม
+    ระบบจะต้องไม่อนุญาตให้อัดลม (ห้ามเป็น INSUFFLATION) และต้องตัดไประบายลม (DEFLATION_STOP หรือ IDLE เมื่อระบายหมดแล้ว)
+    """
+    hil.send_cmd("hil reset")
     hil.send_cmd("hil set_state INSUFFLATE")
-    data_insuf = hil.send_cmd_json("hil status")
-    assert data_insuf["state"] == "INSUFFLATION"
-    assert data_insuf["camera_scene"] == "LUMEN_EXPANDING_INSUFFLATION"
-
-    # 2. ทดสอบเปลี่ยนเป็น INSPECT
-    hil.send_cmd("hil set_state INSPECT")
-    data_insp = hil.send_cmd_json("hil status")
-    assert data_insp["state"] == "STABLE_INSPECTION"
-    assert data_insp["camera_scene"] == "MUCOSAL_INSPECTION_POLYP_ACTIVE"
-
-    # 3. ทดสอบเปลี่ยนกลับสู่ IDLE
-    hil.send_cmd("hil set_state IDLE")
-    data_idle = hil.send_cmd_json("hil status")
-    assert data_idle["state"] == "IDLE"
-
-    csv_record({
-        "fsm_check": "INSUFFLATE -> INSPECT -> IDLE Passed",
-        "last_camera_scene": data_idle["camera_scene"]
-    })
+    data = hil.send_cmd_json("hil status")
+    assert data["state"] in ("DEFLATION_STOP", "IDLE"), (
+        f"Safety Interlock Violated: System allowed INSUFFLATION when start=0! (State: {data['state']})"
+    )
+    assert data["state"] != "INSUFFLATION"
+    csv_record({"safety_interlock_stop_rule": "PASSED", "safe_state": data["state"]})
 
 
 def test_04_leak_injection_and_audio(hil, csv_record):
     """ทดสอบการฉีดลมรั่ว และตรวจสอบว่าสถานะเสียง AC Audio Leak เปิดทำงานพร้อมกัน"""
-    # สั่ง Inject Leak
-    hil.send_cmd("hil inject_leak 1")
-    data = hil.send_cmd_json("hil status")
+    # แพทย์เริ่มตรวจก่อน จากนั้นเกิดเหตุลมรั่ว
+    hil.send_cmd("hil button start")
 
-    csv_record({
-        "leak_state": data.get("leak"),
-        "audio_active": data.get("audio_active"),
-        "state_after_leak": data.get("state")
-    })
+    try:
+        # สั่ง Inject Leak
+        hil.send_cmd("hil inject_leak 1")
+        data = hil.send_cmd_json("hil status")
 
-    assert data["leak"] is True, "Leak should be active"
-    assert data["audio_active"] is True, "AC Audio leak must be active when leak occurs"
-    assert data["state"] == "LEAK_EVENT", f"State should be LEAK_EVENT, got: {data['state']}"
+        csv_record({
+            "leak_state": data.get("leak"),
+            "audio_active": data.get("audio_active"),
+            "state_after_leak": data.get("state")
+        })
 
-    # เคลียร์ลมรั่ว
-    hil.send_cmd("hil inject_leak 0")
-    data_cleared = hil.send_cmd_json("hil status")
-    assert data_cleared["leak"] is False
+        assert data["leak"] is True, "Leak should be active"
+        assert data["audio_active"] is True, "AC Audio leak must be active when leak occurs"
+        assert data["state"] == "LEAK_EVENT", f"State should be LEAK_EVENT, got: {data['state']}"
+
+        # เคลียร์ลมรั่ว
+        hil.send_cmd("hil inject_leak 0")
+        data_cleared = hil.send_cmd_json("hil status")
+        assert data_cleared["leak"] is False
+    finally:
+        hil.send_cmd("hil reset")
 
 
 def test_05_mock_control_ios(hil, csv_record):
@@ -381,6 +420,7 @@ def test_09_data_driven_clinical_scenarios(hil, csv_record, sc):
     finally:
         # รีเซ็ตระบบกลับสู่สถานะ IDLE เพื่อไม่ให้ส่งผลกระทบต่อ Scenario ถัดไป
         hil.send_cmd("hil reset")
+        time.sleep(0.08)
 
 
 
