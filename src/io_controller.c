@@ -36,8 +36,9 @@ int io_controller_init(void)
 {
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_start_stop))
     if (gpio_is_ready_dt(&start_stop_gpio)) {
-        gpio_pin_configure_dt(&start_stop_gpio, GPIO_INPUT);
-        LOG_INF("KR260 Start/Stop GPIO ready on %s pin %d", start_stop_gpio.port->name, start_stop_gpio.pin);
+        gpio_pin_configure_dt(&start_stop_gpio, GPIO_OUTPUT_INACTIVE);
+        LOG_INF("KR260 Mock Doctor Start/Stop Output ready on %s pin %d (Default: STOP/0V)",
+                start_stop_gpio.port->name, start_stop_gpio.pin);
     }
 #endif
 
@@ -61,15 +62,35 @@ int io_controller_init(void)
 
 bool io_controller_get_start_stop(void)
 {
-    if (g_mock_start_stop_override) {
-        return g_mock_start_stop;
-    }
+    return g_mock_start_stop;
+}
+
+int io_controller_set_doctor_button(bool active)
+{
+    g_mock_start_stop_override = true;
+    g_mock_start_stop = active;
+
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_start_stop))
     if (gpio_is_ready_dt(&start_stop_gpio)) {
-        return (gpio_pin_get_dt(&start_stop_gpio) > 0);
+        gpio_pin_set_dt(&start_stop_gpio, active ? 1 : 0);
+        LOG_INF("Mock Doctor Button driven to %s (Pin %d = %d)",
+                active ? "START (3.3V)" : "STOP (0V)",
+                start_stop_gpio.pin, active ? 1 : 0);
+        return 0;
     }
 #endif
-    return g_mock_start_stop;
+    LOG_INF("Mock Doctor Button state updated: %s", active ? "START" : "STOP");
+    return 0;
+}
+
+int io_controller_pulse_doctor_button(uint32_t duration_ms)
+{
+    LOG_INF("Mock Doctor Button: Sending momentary START pulse (%u ms)...", duration_ms);
+    io_controller_set_doctor_button(true);
+    k_msleep(duration_ms > 0 ? duration_ms : 200);
+    io_controller_set_doctor_button(false);
+    LOG_INF("Mock Doctor Button: Pulse complete, returned to STOP");
+    return 0;
 }
 
 bool io_controller_get_estop(void)
@@ -107,9 +128,7 @@ bool io_controller_get_solenoid_valve(void)
 
 void io_controller_set_mock_start_stop(bool active)
 {
-    g_mock_start_stop_override = true;
-    g_mock_start_stop = active;
-    LOG_INF("Mock Start/Stop set to %d", active);
+    io_controller_set_doctor_button(active);
 }
 
 void io_controller_set_mock_estop(bool active)

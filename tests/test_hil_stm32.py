@@ -305,3 +305,21 @@ def test_07_test_interfaces(hil, csv_record):
     assert "pwm_capture" in diag, "pwm_capture missing from diagnostics"
     assert "dac_audio_leak" in diag, "dac_audio_leak missing from diagnostics"
 
+
+def test_08_mock_doctor_button(hil, csv_record):
+    """ทดสอบคำสั่ง hil button จำลองปุ่มกดของแพทย์ (Start/Stop) ส่งไปยัง KR260"""
+    # 1. จำลองแพทย์กดปุ่ม START เพื่อเริ่มระบบ PID & AI
+    res_start = hil.send_cmd("hil button start")
+    assert "OK" in res_start or "START" in res_start
+    data = hil.send_cmd_json("hil status")
+    assert data["start_stop_io"] is True
+
+    # 2. จำลองแพทย์กดปุ่ม STOP เพื่อหยุดระบบเมื่อตรวจเสร็จ
+    res_stop = hil.send_cmd("hil button stop")
+    assert "OK" in res_stop or "STOP" in res_stop
+    data_stop = hil.send_cmd_json("hil status")
+    assert data_stop["start_stop_io"] is False
+
+    csv_record({"doctor_button_test": "PASSED", "start_stop_cycle": "OK"})
+
+

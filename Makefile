@@ -46,9 +46,9 @@ VCD_FILE = $(SIM_DIR)/pwm_wave.vcd
 # ------------------------------------------------------------------------------
 # Phony Targets
 # ------------------------------------------------------------------------------
-.PHONY: all help build build-inc flash build-flash clean-build \
+.PHONY: all help build build-inc flash flash-msd build-flash clean-build \
         compile sim wave surfer clean-sim clean \
-        venv install-deps test test-interfaces test-setup clean-test
+        venv install-deps test test-interfaces test-button test-setup clean-test
 
 # คำสั่งเริ่มต้น: แสดง Help เมนู
 all: help
@@ -67,10 +67,31 @@ build-inc:
 	@echo "=== [Zephyr] Incremental Building for $(BOARD) ==="
 	@$(SHELL) -c "$(ZEPHYR_ENV_CMD) && west build -b $(BOARD) ."
 
-# แฟลชเฟิร์มแวร์ลงบอร์ด Nucleo-H563ZI ผ่าน ST-Link
+# แฟลชเฟิร์มแวร์ลงบอร์ด Nucleo-H563ZI ผ่าน ST-Link พร้อมระบบ Self-Healing
 flash:
 	@echo "=== [Zephyr] Flashing Firmware to $(BOARD) ==="
-	@$(SHELL) -c "$(ZEPHYR_ENV_CMD) && west flash"
+	@# 1. ปลด process ที่อาจล็อกพอร์ต Serial (CDC-ACM) อยู่ก่อน เพื่อป้องกัน macOS error 0xe00002d8
+	@-lsof -t /dev/tty.usbmodem* /dev/ttyACM* 2>/dev/null | xargs kill -9 2>/dev/null || true
+	@# 2. ทำการ flash ผ่าน west / stm32cubeprogrammer
+	@# 3. หากเกิดข้อผิดพลาด ให้ Fallback ไปแฟลชผ่าน Mass Storage Device (USB Drive) อัตโนมัติ
+	@$(SHELL) -c "$(ZEPHYR_ENV_CMD) && west flash" || ( \
+		echo "=== [Self-Healing] west flash failed (USB/ST-Link locked). Attempting Mass Storage fallback... ===" && \
+		( \
+			cp build/zephyr/zephyr.bin /Volumes/NOD*/ 2>/dev/null || \
+			cp build/zephyr/zephyr.bin /media/$$USER/NOD*/ 2>/dev/null || \
+			cp build/zephyr/zephyr.bin /run/media/$$USER/NOD*/ 2>/dev/null \
+		) && \
+		echo "=== [Self-Healing] Successfully flashed zephyr.bin via Nucleo Mass Storage! (LED will blink while programming) ===" \
+	)
+
+# แฟลชตรงผ่าน USB Mass Storage Drive (เร็วสุด ไม่ต้องผ่าน STM32CubeProgrammer)
+flash-msd:
+	@echo "=== [Zephyr] Direct Mass Storage Flash to Nucleo Drive ==="
+	@( \
+		cp build/zephyr/zephyr.bin /Volumes/NOD*/ 2>/dev/null || \
+		cp build/zephyr/zephyr.bin /media/$$USER/NOD*/ 2>/dev/null || \
+		cp build/zephyr/zephyr.bin /run/media/$$USER/NOD*/ 2>/dev/null \
+	) && echo "=== [MSD] zephyr.bin copied! Board will reboot automatically. ==="
 
 # คอมไพล์แบบ Clean Build แล้วแฟลชลงบอร์ดทันที
 build-flash: build flash
@@ -108,6 +129,11 @@ test: venv
 test-interfaces: venv
 	@echo "=== [Pytest] Running Only 'hil test_interfaces' Diagnostics ==="
 	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/test_hil_stm32.py -k test_07_test_interfaces -v -s"
+
+# รันเฉพาะการทดสอบ Mock Doctor Start/Stop Button
+test-button: venv
+	@echo "=== [Pytest] Running Doctor Start/Stop Button Tests ==="
+	@$(SHELL) -c "$(VENV_ACTIVATE) && pytest tests/test_hil_stm32.py -k test_08_mock_doctor_button -v -s"
 
 # 4. คำสั่ง All-in-One: ติดตั้ง Dependencies และรัน Test ต่อเนื่อง
 test-setup: install-deps test
@@ -159,7 +185,8 @@ help:
 	@echo " [Zephyr RTOS / STM32H563ZI Firmware]"
 	@echo "   make build        : คอมไพล์แบบ Pristine (west build -p always -b $(BOARD) .)"
 	@echo "   make build-inc    : คอมไพล์แบบ Incremental (west build -b $(BOARD) .)"
-	@echo "   make flash        : แฟลชเฟิร์มแวร์ลงบอร์ด (west flash)"
+	@echo "   make flash        : แฟลชเฟิร์มแวร์ลงบอร์ด (Self-healing: ปลดล็อค Serial + Auto-fallback)"
+	@echo "   make flash-msd    : แฟลชตรงผ่าน Mass Storage Drive (เร็วสุด ไม่ผ่าน STM32CubeProgrammer)"
 	@echo "   make build-flash  : คอมไพล์ Pristine แล้วแฟลชลงบอร์ดทันที"
 	@echo "   make clean-build  : ลบโฟลเดอร์ build/"
 	@echo ""
@@ -168,6 +195,7 @@ help:
 	@echo "   make install-deps    : ติดตั้ง dependencies จาก requirements.txt"
 	@echo "   make test            : รัน pytest tests/ -v --csv=reports/test_results.csv"
 	@echo "   make test-interfaces : รันเฉพาะการทดสอบ 'hil test_interfaces' (Loopback Check)"
+	@echo "   make test-button     : รันเฉพาะการทดสอบ Mock Doctor Start/Stop Button"
 	@echo "   make test-setup      : ติดตั้ง deps พร้อมรันการทดสอบทันที"
 	@echo "   make clean-test      : ลบ .pytest_cache และรายงาน CSV"
 	@echo ""

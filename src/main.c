@@ -260,6 +260,33 @@ static int cmd_hil_audio_leak(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 
+static int cmd_hil_button(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil button <start|stop|pulse> [pulse_ms]");
+        return -EINVAL;
+    }
+
+    if (strcasecmp(argv[1], "start") == 0) {
+        io_controller_set_doctor_button(true);
+        shell_print(sh, "OK: Doctor Button -> START (Driven 3.3V to KR260 to start AI & PID)");
+    } else if (strcasecmp(argv[1], "stop") == 0) {
+        io_controller_set_doctor_button(false);
+        shell_print(sh, "OK: Doctor Button -> STOP (Driven 0V to KR260 to stop and vent)");
+    } else if (strcasecmp(argv[1], "pulse") == 0) {
+        uint32_t ms = (argc >= 3) ? atoi(argv[2]) : 200;
+        io_controller_pulse_doctor_button(ms);
+        shell_print(sh, "OK: Doctor Button -> Momentary Pulse (%u ms) sent to KR260", ms);
+    } else if (strcasecmp(argv[1], "status") == 0) {
+        bool active = io_controller_get_start_stop();
+        shell_print(sh, "{\"button\": \"%s\", \"level\": %d}", active ? "START" : "STOP", active ? 1 : 0);
+    } else {
+        shell_error(sh, "Unknown action: %s (Use 'start', 'stop', 'pulse', or 'status')", argv[1]);
+        return -EINVAL;
+    }
+    return 0;
+}
+
 static int cmd_hil_start_stop(const struct shell *sh, size_t argc, char **argv)
 {
     if (argc < 2) {
@@ -268,7 +295,7 @@ static int cmd_hil_start_stop(const struct shell *sh, size_t argc, char **argv)
     }
 
     int val = atoi(argv[1]);
-    io_controller_set_mock_start_stop(val != 0);
+    io_controller_set_doctor_button(val != 0);
     shell_print(sh, "OK: Start/Stop IO set to %d", val);
     return 0;
 }
@@ -378,6 +405,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
     SHELL_CMD(set_pressure, NULL, "Set fixed pressure value in kPa", cmd_hil_set_pressure),
     SHELL_CMD(inject_leak, NULL, "Inject or clear gas leak <0|1>", cmd_hil_inject_leak),
     SHELL_CMD(audio_leak, NULL, "Control AC Audio Leak Generator <0|1>", cmd_hil_audio_leak),
+    SHELL_CMD(button, NULL, "Simulate Doctor Start/Stop button <start|stop|pulse|status>", cmd_hil_button),
     SHELL_CMD(set_start_stop, NULL, "Set Start/Stop IO command <0|1>", cmd_hil_start_stop),
     SHELL_CMD(set_estop, NULL, "Set Emergency Stop IO <0|1>", cmd_hil_estop),
     SHELL_CMD(set_solenoid, NULL, "Set Solenoid Purge Valve <0|1>", cmd_hil_solenoid),

@@ -20,20 +20,16 @@
         hil-target        = &pressure_target;
         hil-master        = &i2c2;
         kr260-pwm         = &kr260_pwm_input;
-        kr260-start-stop  = &kr260_start_stop_input;
+        kr260-start-stop  = &kr260_start_stop_output;
         kr260-solenoid    = &kr260_solenoid_input;
         kr260-estop       = &kr260_estop_input;
     };
 
-    kr260_hil_pins {
+    kr260_hil_inputs {
         compatible = "gpio-keys";
         kr260_pwm_input: pwm_in {
             gpios = <&gpiof 15 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
             label = "KR260 Airpump PWM Capture Input";
-        };
-        kr260_start_stop_input: start_stop_in {
-            gpios = <&gpiob 13 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
-            label = "KR260 Start/Stop Command Input";
         };
         kr260_solenoid_input: solenoid_in {
             gpios = <&gpioe 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
@@ -42,6 +38,14 @@
         kr260_estop_input: estop_in {
             gpios = <&gpioe 9 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
             label = "KR260 Emergency Stop Input";
+        };
+    };
+
+    kr260_hil_outputs {
+        compatible = "gpio-leds";
+        kr260_start_stop_output: start_stop_out {
+            gpios = <&gpiob 13 GPIO_ACTIVE_HIGH>;
+            label = "Mock Doctor Start/Stop Button Output to KR260";
         };
     };
 };

@@ -90,6 +90,10 @@ int audio_leak_init(void)
 
 void audio_leak_set_enable(bool enable)
 {
+    if (g_audio_enabled == enable) {
+        return; /* บันทึก Log เฉพาะเมื่อสถานะเปลี่ยน (Edge-triggered) เพื่อไม่ให้สแปม Terminal */
+    }
+
     g_audio_enabled = enable;
     if (enable) {
         LOG_INF("Audio Leak AC Generator: ACTIVATED (%u Hz Hiss)", g_freq_hz);

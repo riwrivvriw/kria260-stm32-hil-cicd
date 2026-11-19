@@ -157,10 +157,10 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
             g_status.state = GI_STATE_LEAK_EVENT;
             g_status.audio_leak_active = true;
             LOG_WRN("Transition -> LEAK_EVENT (Air leak detected during inspection)");
-        } else if (!start_stop_pin) {
+        } else if (solenoid_valve_pin || (!start_stop_pin && pump_duty < 0.02f)) {
             g_status.state = GI_STATE_DEFLATION_STOP;
             g_status.solenoid_valve_open = true;
-            LOG_INF("Transition -> DEFLATION_STOP (Stop IO asserted)");
+            LOG_INF("Transition -> DEFLATION_STOP (Stop asserted or valve venting)");
         } else if (g_status.current_pressure_kpa < (g_status.target_pressure_kpa - 8.0f)) {
             // ความดันตกต่ำกว่าเกณฑ์ กลับไปเร่งปั๊มใหม่
             g_status.state = GI_STATE_INSUFFLATION;
