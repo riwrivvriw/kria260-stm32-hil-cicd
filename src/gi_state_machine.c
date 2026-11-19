@@ -128,10 +128,11 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
     switch (g_status.state) {
     case GI_STATE_IDLE:
         g_status.audio_leak_active = false;
-        // เริ่มต้นเมื่อได้รับสัญญาณ Start IO หรือ KR260 เริ่มขับ PWM ปั๊มลม
-        if (start_stop_pin || pump_duty > 0.05f) {
+        // เริ่มต้นการอัดก๊าซ (INSUFFLATION) เฉพาะเมื่อ KR260 ส่งสัญญาณ PWM มาขับปั๊มลมจริงๆ (Strict Hardware-Driven)
+        if (pump_duty > 0.05f) {
             g_status.state = GI_STATE_INSUFFLATION;
-            LOG_INF("Transition -> INSUFFLATION (Pumping started)");
+            LOG_INF("Transition -> INSUFFLATION (KR260 Air Pump PWM active: %.1f%%)",
+                    (double)(pump_duty * 100.0f));
         }
         break;
 
@@ -140,10 +141,10 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
             g_status.state = GI_STATE_LEAK_EVENT;
             g_status.audio_leak_active = true;
             LOG_WRN("Transition -> LEAK_EVENT (Air leak detected during insufflation)");
-        } else if (!start_stop_pin && pump_duty < 0.02f) {
+        } else if (solenoid_valve_pin || (!start_stop_pin && pump_duty < 0.02f)) {
             g_status.state = GI_STATE_DEFLATION_STOP;
             g_status.solenoid_valve_open = true;
-            LOG_INF("Transition -> DEFLATION_STOP (Procedure aborted)");
+            LOG_INF("Transition -> DEFLATION_STOP (Procedure stopped or valve venting)");
         } else if (g_status.current_pressure_kpa >= (g_status.target_pressure_kpa - 2.5f)) {
             g_status.state = GI_STATE_STABLE_INSPECTION;
             LOG_INF("Transition -> STABLE_INSPECTION (Target reached: %.2f kPa)",
