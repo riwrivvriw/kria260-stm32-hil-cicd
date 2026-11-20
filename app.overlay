@@ -2,17 +2,21 @@
  * DeviceTree Overlay สำหรับ STM32H563ZI (Nucleo-H563ZI)
  *
  * 1. I2C1: Target (Slave) จำลอง Sensor Registers ที่ Address 0x58
- *          (พิน Arduino D15/D14: PB8 = SCL, PB9 = SDA)
- * 2. I2C2: Controller (Master) ใช้สำหรับทดสอบ Loopback บนบอร์ดตัวเอง
- *          (พิน Morpho Header: PF1 = SCL, PF0 = SDA)
- * 3. KR260 PWM Input: รับสัญญาณ Airpump PWM จาก KR260 (ขา PMOD1 Pin 1)
- *          (พิน Arduino D2: PF15 พร้อม Internal Pull-Down)
- * 4. KR260 Control IOs:
- *          - Start/Stop Command: พิน Arduino D3 (PB13)
- *          - Solenoid Purge Valve Command: พิน Arduino D4 (PE11)
- *          - Emergency Stop Input: พิน Arduino D5 (PE9)
- * 5. Leak Audio AC Output:
- *          - Analog AC Leak Sound (DAC1 Out1): พิน Arduino A2 (PA4)
+ *          - พิน D15 (PB8) = SCL (ช่อง CN7 pin 2)
+ *          - พิน D14 (PB9) = SDA (ช่อง CN7 pin 4)
+ * 2. I2C2: Controller (Master) สำหรับทดสอบ Loopback ข้ามขา D69 / D68
+ *          - พิน D69 (PF1) = SCL (ช่อง CN9 pin 19)
+ *          - พิน D68 (PF0) = SDA (ช่อง CN9 pin 21)
+ * 3. Doctor Start/Stop Button (Output):
+ *          - พิน D3 (PE13)
+ * 4. Solenoid Purge Valve Command (Input):
+ *          - พิน D4 (PE14)
+ * 5. Emergency Stop Input (Input):
+ *          - พิน D5 (PE11)
+ * 6. Leak Audio AC Output:
+ *          - พิน A2 (PA4 - DAC1 Out1)
+ * 7. KR260 PWM Input:
+ *          - พิน D2 (PF15)
  */
 
 / {
@@ -32,20 +36,20 @@
             label = "KR260 Airpump PWM Capture Input";
         };
         kr260_solenoid_input: solenoid_in {
-            gpios = <&gpioe 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
-            label = "KR260 Solenoid Valve Control Input";
+            gpios = <&gpioe 14 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+            label = "KR260 Solenoid Valve Control Input (Arduino D4)";
         };
         kr260_estop_input: estop_in {
-            gpios = <&gpioe 9 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
-            label = "KR260 Emergency Stop Input";
+            gpios = <&gpioe 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+            label = "KR260 Emergency Stop Input (Arduino D5)";
         };
     };
 
     kr260_hil_outputs {
         compatible = "gpio-leds";
         kr260_start_stop_output: start_stop_out {
-            gpios = <&gpiob 13 GPIO_ACTIVE_HIGH>;
-            label = "Mock Doctor Start/Stop Button Output to KR260";
+            gpios = <&gpioe 13 GPIO_ACTIVE_HIGH>;
+            label = "Mock Doctor Start/Stop Button Output to KR260 (Arduino D3)";
         };
     };
 };
@@ -55,7 +59,7 @@
 &gpioe { status = "okay"; };
 &gpiof { status = "okay"; };
 
-/* I2C1: กำหนดเป็น Target (Slave) */
+/* I2C1: กำหนดเป็น Target (Slave) บนพิน D15 (SCL) / D14 (SDA) */
 &i2c1 {
     status = "okay";
     clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz */
@@ -67,7 +71,7 @@
     };
 };
 
-/* I2C2: กำหนดเป็น Controller (Master) */
+/* I2C2: กำหนดเป็น Controller (Master) บนพิน D69 (SCL) / D68 (SDA) สำหรับ Loopback */
 &i2c2 {
     pinctrl-0 = <&i2c2_scl_pf1 &i2c2_sda_pf0>;
     pinctrl-names = "default";

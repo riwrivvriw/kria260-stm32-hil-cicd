@@ -144,3 +144,34 @@ void io_controller_set_mock_solenoid(bool active)
     g_mock_solenoid = active;
     LOG_INF("Mock Solenoid Valve set to %d", active);
 }
+
+void io_controller_clear_mock_overrides(void)
+{
+    g_mock_start_stop_override = false;
+    g_mock_estop_override = false;
+    g_mock_solenoid_override = false;
+    g_mock_start_stop = false;
+    g_mock_estop = false;
+    g_mock_solenoid = false;
+    LOG_INF("Mock GPIO overrides cleared. Now reading physical hardware pins.");
+}
+
+int io_controller_get_physical_levels(int *start_out, int *sol_in, int *estop_in)
+{
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_start_stop))
+    if (start_out && gpio_is_ready_dt(&start_stop_gpio)) {
+        *start_out = gpio_pin_get_dt(&start_stop_gpio);
+    }
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_solenoid))
+    if (sol_in && gpio_is_ready_dt(&solenoid_gpio)) {
+        *sol_in = gpio_pin_get_dt(&solenoid_gpio);
+    }
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop))
+    if (estop_in && gpio_is_ready_dt(&estop_gpio)) {
+        *estop_in = gpio_pin_get_dt(&estop_gpio);
+    }
+#endif
+    return 0;
+}

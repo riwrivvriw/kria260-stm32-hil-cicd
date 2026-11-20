@@ -66,6 +66,16 @@ void io_controller_set_mock_estop(bool active);
  */
 void io_controller_set_mock_solenoid(bool active);
 
+/**
+ * @brief ล้างค่า Mock Overrides ทั้งหมดเพื่อกลับมาอ่านค่าจากพินฮาร์ดแวร์จริง
+ */
+void io_controller_clear_mock_overrides(void);
+
+/**
+ * @brief อ่านระดับแรงดันลอจิก (0 หรือ 1) โดยตรงจากพินฮาร์ดแวร์
+ */
+int io_controller_get_physical_levels(int *start_out, int *sol_in, int *estop_in);
+
 #ifdef __cplusplus
 }
 #endif

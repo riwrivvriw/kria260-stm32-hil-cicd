@@ -230,7 +230,20 @@ static int cmd_hil_set_pressure(const struct shell *sh, size_t argc, char **argv
 
     float new_pressure = strtof(argv[1], NULL);
     gi_state_machine_set_fixed_pressure(new_pressure);
-    shell_print(sh, "OK: Pressure set to %.2f kPa (Auto-sim disabled)", (double)new_pressure);
+    shell_print(sh, "OK: Pressure set to %.2f kPa (Auto-sim disabled. Use 'hil auto 1' to enable decay/vent)", (double)new_pressure);
+    return 0;
+}
+
+static int cmd_hil_auto(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil auto <0|1>");
+        return -EINVAL;
+    }
+
+    int enable = atoi(argv[1]);
+    gi_state_machine_set_auto(enable != 0);
+    shell_print(sh, "OK: Auto Physics Simulation set to %d", enable);
     return 0;
 }
 
@@ -334,11 +347,23 @@ static int cmd_hil_reset(const struct shell *sh, size_t argc, char **argv)
 
     gi_state_machine_reset();
     audio_leak_set_enable(false);
-    io_controller_set_mock_start_stop(false);
-    io_controller_set_mock_estop(false);
-    io_controller_set_mock_solenoid(false);
+    io_controller_clear_mock_overrides();
 
-    shell_print(sh, "OK: HIL System Simulator fully reset to IDLE");
+    shell_print(sh, "OK: HIL System Simulator fully reset to IDLE (Mock GPIO overrides cleared)");
+    return 0;
+}
+
+static int cmd_hil_test_gpio(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+
+    int d3_out = -1, d4_sol_in = -1, d5_estop_in = -1;
+    io_controller_get_physical_levels(&d3_out, &d4_sol_in, &d5_estop_in);
+
+    shell_print(sh,
+        "{\"physical_gpio\": {\"d3_button_out\": %d, \"d4_solenoid_in\": %d, \"d5_estop_in\": %d}}",
+        d3_out, d4_sol_in, d5_estop_in);
     return 0;
 }
 
@@ -422,6 +447,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
     SHELL_CMD(scenario, NULL, "Apply named clinical scenario <normal|low_pressure|over_expansion|gas_leak|...>", cmd_hil_scenario),
     SHELL_CMD(set_state, NULL, "Force FSM state <IDLE|INSUFFLATE|INSPECT|LEAK|DEFLATE|ESTOP>", cmd_hil_set_state),
     SHELL_CMD(set_pressure, NULL, "Set fixed pressure value in kPa", cmd_hil_set_pressure),
+    SHELL_CMD(auto, NULL, "Enable or disable auto physics simulation <0|1>", cmd_hil_auto),
     SHELL_CMD(inject_leak, NULL, "Inject or clear gas leak <0|1>", cmd_hil_inject_leak),
     SHELL_CMD(audio_leak, NULL, "Control AC Audio Leak Generator <0|1>", cmd_hil_audio_leak),
     SHELL_CMD(button, NULL, "Simulate Doctor Start/Stop button <start|stop|pulse|status>", cmd_hil_button),
@@ -430,6 +456,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
     SHELL_CMD(set_solenoid, NULL, "Set Solenoid Purge Valve <0|1>", cmd_hil_solenoid),
     SHELL_CMD(reset, NULL, "Reset plant simulator to default IDLE", cmd_hil_reset),
     SHELL_CMD(loopback, NULL, "Execute I2C loopback test", cmd_hil_loopback),
+    SHELL_CMD(test_gpio, NULL, "Read physical GPIO loopback levels (D3, D4, D5)", cmd_hil_test_gpio),
     SHELL_CMD(test_interfaces, NULL, "Execute all interface loopback & status tests", cmd_hil_test_interfaces),
     SHELL_SUBCMD_SET_END
 );

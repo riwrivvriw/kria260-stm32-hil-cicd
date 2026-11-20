@@ -340,6 +340,13 @@ void gi_state_machine_set_fixed_pressure(float pressure_kpa)
     k_mutex_unlock(&g_sm_mutex);
 }
 
+void gi_state_machine_set_auto(bool enable)
+{
+    k_mutex_lock(&g_sm_mutex, K_FOREVER);
+    g_status.auto_simulation = enable;
+    k_mutex_unlock(&g_sm_mutex);
+}
+
 void gi_state_machine_set_solenoid(bool open_valve)
 {
     k_mutex_lock(&g_sm_mutex, K_FOREVER);

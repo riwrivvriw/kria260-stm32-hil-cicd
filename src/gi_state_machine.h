@@ -106,6 +106,11 @@ void gi_state_machine_inject_leak(bool active);
 void gi_state_machine_set_fixed_pressure(float pressure_kpa);
 
 /**
+ * @brief เปิด/ปิด ระบบคำนวณฟิสิกส์ความดันอัตโนมัติ (Auto Simulation)
+ */
+void gi_state_machine_set_auto(bool enable);
+
+/**
  * @brief ควบคุมโซลินอยด์วาล์วระบายก๊าซ
  */
 void gi_state_machine_set_solenoid(bool open_valve);
