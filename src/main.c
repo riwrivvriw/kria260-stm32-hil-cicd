@@ -103,7 +103,7 @@ static void plant_sim_thread_entry(void *p1, void *p2, void *p3)
         if (sys_stat.leak_active)        status_flags |= STATUS_BIT_LEAK;
         if (sys_stat.solenoid_valve_open) status_flags |= STATUS_BIT_VALVE;
         if (sys_stat.pump_duty > 0.05f)  status_flags |= STATUS_BIT_PUMPING;
-        if (sys_stat.audio_leak_active)  status_flags |= STATUS_BIT_AUDIO;
+        if (sys_stat.audio_leak_active || audio_leak_is_active())  status_flags |= STATUS_BIT_AUDIO;
         if (sys_stat.state != GI_STATE_IDLE) status_flags |= STATUS_BIT_CAMERA;
         if (sys_stat.estop_active)       status_flags |= STATUS_BIT_ESTOP;
 
@@ -188,7 +188,7 @@ static int cmd_hil_status(const struct shell *sh, size_t argc, char **argv)
         s.pwm_freq_hz,
         s.leak_active ? "true" : "false",
         s.solenoid_valve_open ? "true" : "false",
-        s.audio_leak_active ? "true" : "false",
+        (s.audio_leak_active || audio_leak_is_active()) ? "true" : "false",
         s.start_stop_io ? "true" : "false",
         s.estop_active ? "true" : "false",
         s.doctor_estop_btn ? "true" : "false",
