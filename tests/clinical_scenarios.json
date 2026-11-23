@@ -33,7 +33,7 @@
     "expected_leak": true,
     "expected_audio": true,
     "expected_auto_sim": true,
-    "description": "Injects an acute gas leak. STM32 generates 3 kHz acoustic hiss on DAC PA4 and drains pressure at 22 kPa/s. Tests Vitis AI acoustic classifier and PID feedforward compensation."
+    "description": "Injects an acute gas leak. STM32 generates 3 kHz acoustic hiss via Digital I2S2 (PB13/PB12/PB15) emulating MEMS mic and drains pressure at 22 kPa/s. Tests Vitis AI acoustic classifier and PID feedforward compensation."
   },
   {
     "id": "HIL-TC-04",
@@ -70,5 +70,51 @@
     "expected_audio": false,
     "expected_auto_sim": true,
     "description": "Simulates sudden patient muscular spasm or cough causing a 145 kPa transient spike. Tests transient response and absorption decay back toward stable baseline."
+  },
+  {
+    "id": "HIL-TC-07",
+    "name": "Patient Cough Debounce & Persistent Hazard Cutoff",
+    "description": "Multi-step timeline: Validates transient cough spike (<2s) tolerance followed by persistent overpressure safety shutdown.",
+    "steps": [
+      {
+        "step_name": "Doctor initiates procedure (Button START)",
+        "command": "hil button start",
+        "wait_sec": 0.2,
+        "expect": {
+          "estop": false,
+          "start_stop_io": true
+        }
+      },
+      {
+        "step_name": "Transient cough spike (P=142 kPa for 0.5s)",
+        "command": "hil set_pressure 142.0",
+        "wait_sec": 0.5,
+        "expect": {
+          "min_pressure": 140.0,
+          "max_pressure": 144.0,
+          "estop": false
+        }
+      },
+      {
+        "step_name": "Patient spasm relaxes back to target inspection pressure",
+        "command": "hil set_pressure 125.0",
+        "wait_sec": 0.3,
+        "expect": {
+          "min_pressure": 124.0,
+          "max_pressure": 126.0,
+          "estop": false
+        }
+      },
+      {
+        "step_name": "Persistent hazard overpressure trip (>150 kPa limit)",
+        "command": "hil scenario over_expansion",
+        "wait_sec": 0.3,
+        "expect": {
+          "state": "EMERGENCY_STOP",
+          "solenoid_valve": true,
+          "estop": false
+        }
+      }
+    ]
   }
 ]

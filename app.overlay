@@ -13,8 +13,10 @@
  *          - พิน D4 (PE14)
  * 5. Emergency Stop Input (Input):
  *          - พิน D5 (PE11)
- * 6. Leak Audio AC Output:
- *          - พิน A2 (PA4 - DAC1 Out1)
+ * 6. Leak Audio Digital I2S Output (Emulated Digital Mic):
+ *          - BCLK (SCK) : พิน D18 (PB13) (CN7 pin 30)
+ *          - WS (LRCLK) : พิน D19 (PB12) (CN7 pin 16)
+ *          - SD (DOUT)  : พิน D17 (PB15) (CN7 pin 26)
  * 7. KR260 PWM Input:
  *          - พิน D2 (PF15)
  */
@@ -23,6 +25,7 @@
     aliases {
         hil-target        = &pressure_target;
         hil-master        = &i2c2;
+        hil-audio-i2s     = &i2s2;
         kr260-pwm         = &kr260_pwm_input;
         kr260-start-stop  = &kr260_start_stop_output;
         kr260-solenoid    = &kr260_solenoid_input;
@@ -78,3 +81,24 @@
     status = "okay";
     clock-frequency = <I2C_BITRATE_STANDARD>;
 };
+
+/* ปลดการจองขาพิน PB13 / PB15 จาก Ethernet และ UCPD เพื่อให้ I2S2 นำไปใช้งานได้ */
+&mac {
+    status = "disabled";
+};
+
+&ucpd1 {
+    status = "disabled";
+};
+
+/* I2S2: จำลอง Digital MEMS Microphone สำหรับสัญญาณเสียงลมรั่ว (Leak Audio)
+ * - PB13 (Arduino D18) : BCLK
+ * - PB12 (Arduino D19) : WS / LRCLK
+ * - PB15 (Arduino D17) : SD / Serial Data Out
+ */
+&i2s2 {
+    pinctrl-0 = <&i2s2_ck_pb13 &i2s2_ws_pb12 &i2s2_sdo_pb15>;
+    pinctrl-names = "default";
+    status = "okay";
+};
+

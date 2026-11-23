@@ -90,8 +90,8 @@ static void plant_sim_thread_entry(void *p1, void *p2, void *p3)
         gi_system_status_t sys_stat;
         gi_state_machine_get_status(&sys_stat);
 
-        // 4. ซิงค์สัญญาณเสียง AC Audio Leak Generator
-        audio_leak_set_enable(sys_stat.audio_leak_active);
+        // 4. ซิงค์สัญญาณเสียง AC/I2S Audio Leak Generator กับ FSM
+        audio_leak_sync_fsm(sys_stat.audio_leak_active);
 
         // 5. แปลงข้อมูลลง I2C Target Register Buffer
         k_mutex_lock(&g_i2c_mutex, K_FOREVER);
@@ -346,6 +346,7 @@ static int cmd_hil_reset(const struct shell *sh, size_t argc, char **argv)
     ARG_UNUSED(argv);
 
     gi_state_machine_reset();
+    audio_leak_clear_override();
     audio_leak_set_enable(false);
     io_controller_clear_mock_overrides();
 
@@ -395,6 +396,7 @@ static int cmd_hil_scenario(const struct shell *sh, size_t argc, char **argv)
         return -EINVAL;
     }
 
+    audio_leak_clear_override();
     float custom_val = (argc >= 3) ? strtof(argv[2], NULL) : 0.0f;
     int ret = gi_state_machine_apply_scenario(argv[1], custom_val);
     if (ret == 0) {
@@ -423,19 +425,19 @@ static int cmd_hil_test_interfaces(const struct shell *sh, size_t argc, char **a
     uint32_t pwm_freq = kr260_pwm_get_frequency_hz();
     bool pwm_active = kr260_pwm_is_signal_active();
 
-    bool dac_active = audio_leak_is_active();
+    bool i2s_active = audio_leak_is_active();
 
     shell_print(sh,
         "{\"interface_loopback_test\": {"
         "\"i2c_target_0x58\": \"%s\", "
         "\"io_lines\": {\"start_stop\": %s, \"solenoid\": %s, \"estop\": %s}, "
         "\"pwm_capture\": {\"active\": %s, \"duty_pct\": %.2f, \"freq_hz\": %u}, "
-        "\"dac_audio_leak\": {\"active\": %s}, "
+        "\"i2s_audio_leak\": {\"active\": %s}, "
         "\"status\": \"READY\"}}",
         i2c_status,
         io_start ? "true" : "false", io_sol ? "true" : "false", io_estop ? "true" : "false",
         pwm_active ? "true" : "false", (double)(pwm_duty * 100.0f), pwm_freq,
-        dac_active ? "true" : "false"
+        i2s_active ? "true" : "false"
     );
 
     return 0;

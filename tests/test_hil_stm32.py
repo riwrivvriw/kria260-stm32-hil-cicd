@@ -342,7 +342,7 @@ def test_07_test_interfaces(hil, csv_record):
     assert diag.get("status") == "READY", f"Interfaces not READY: {diag}"
     assert "io_lines" in diag, "io_lines missing from diagnostics"
     assert "pwm_capture" in diag, "pwm_capture missing from diagnostics"
-    assert "dac_audio_leak" in diag, "dac_audio_leak missing from diagnostics"
+    assert "i2s_audio_leak" in diag or "dac_audio_leak" in diag, "audio_leak missing from diagnostics"
 
 
 def test_08_mock_doctor_button(hil, csv_record):
@@ -375,48 +375,160 @@ CLINICAL_SCENARIOS = load_clinical_scenarios()
 @pytest.mark.parametrize("sc", CLINICAL_SCENARIOS, ids=[s["id"] for s in CLINICAL_SCENARIOS])
 def test_09_data_driven_clinical_scenarios(hil, csv_record, sc):
     """
-    Data-Driven Test Case Loader:
+    Data-Driven Test Case Loader & Multi-Step DSL Interpreter:
     โหลดและรัน Test Cases จากไฟล์ tests/clinical_scenarios.json โดยอัตโนมัติ
-    รองรับการขยายชุดทดสอบในอนาคตได้ไม่จำกัดโดยไม่ต้องแก้โค้ด Python
+    รองรับทั้ง Single-Step Scenario ดั้งเดิม และ Multi-Step Sequence Actions
+    ช่วยให้ทีมวิศวกรและแพทย์สามารถเพิ่มหรือแก้ไขเงื่อนไขการทดสอบผ่าน JSON ได้โดยไม่ต้องแตะโค้ด Python
     """
-    # 1. ส่งคำสั่ง Scenario ไปยัง STM32
-    cmd = sc["scenario_cmd"]
-    res = hil.send_cmd(cmd)
-    assert "OK" in res, f"Failed to execute {cmd}: {res}"
-
     try:
-        # 2. อ่านสถานะ Telemetry ล่าสุด
-        status = hil.send_cmd_json("hil status")
+        if "steps" in sc and isinstance(sc["steps"], list):
+            # -------------------------------------------------------------
+            # โหมด 1: Multi-Step Sequential Actions (Timeline DSL)
+            # -------------------------------------------------------------
+            last_status = {}
+            for idx, step in enumerate(sc["steps"]):
+                step_name = step.get("step_name", f"Step_{idx+1}")
+                cmd = step.get("command")
+                if cmd:
+                    res = hil.send_cmd(cmd)
+                    assert "OK" in res or "START" in res or "STOP" in res, (
+                        f"[{sc['id']} - {step_name}] Failed to execute command '{cmd}': {res}"
+                    )
 
-        # 3. ตรวจสอบเงื่อนไขตามที่กำหนดใน JSON
-        assert status["state"] == sc["expected_state"], (
-            f"State mismatch for {sc['id']}: expected {sc['expected_state']}, got {status['state']}"
-        )
+                wait_sec = step.get("wait_sec", 0.0)
+                if wait_sec > 0:
+                    time.sleep(wait_sec)
 
-        pressure = status["pressure_kpa"]
-        min_p = sc["expected_min_pressure"]
-        max_p = sc["expected_max_pressure"]
-        assert min_p <= pressure <= max_p, (
-            f"Pressure out of range for {sc['id']}: {pressure} kPa (expected [{min_p}, {max_p}])"
-        )
+                # ดึงค่า Telemetry มาตรวจสอบหากมีการระบุเงื่อนไขใน 'expect'
+                expect = step.get("expect")
+                if expect:
+                    last_status = hil.send_cmd_json("hil status")
 
-        assert status["leak"] is sc["expected_leak"], (
-            f"Leak flag mismatch for {sc['id']}: expected {sc['expected_leak']}, got {status['leak']}"
-        )
+                    if "state" in expect:
+                        assert last_status["state"] == expect["state"], (
+                            f"[{sc['id']} - {step_name}] State mismatch: "
+                            f"expected {expect['state']}, got {last_status['state']}"
+                        )
+                    if "min_pressure" in expect:
+                        assert last_status["pressure_kpa"] >= expect["min_pressure"], (
+                            f"[{sc['id']} - {step_name}] Pressure too low: "
+                            f"{last_status['pressure_kpa']} < {expect['min_pressure']}"
+                        )
+                    if "max_pressure" in expect:
+                        assert last_status["pressure_kpa"] <= expect["max_pressure"], (
+                            f"[{sc['id']} - {step_name}] Pressure too high: "
+                            f"{last_status['pressure_kpa']} > {expect['max_pressure']}"
+                        )
+                    if "leak" in expect:
+                        assert last_status["leak"] is expect["leak"], (
+                            f"[{sc['id']} - {step_name}] Leak mismatch: "
+                            f"expected {expect['leak']}, got {last_status['leak']}"
+                        )
+                    if "audio_active" in expect:
+                        assert last_status["audio_active"] is expect["audio_active"], (
+                            f"[{sc['id']} - {step_name}] Audio mismatch: "
+                            f"expected {expect['audio_active']}, got {last_status['audio_active']}"
+                        )
+                    if "estop" in expect:
+                        assert last_status["estop"] is expect["estop"], (
+                            f"[{sc['id']} - {step_name}] Estop mismatch: "
+                            f"expected {expect['estop']}, got {last_status['estop']}"
+                        )
+                    if "solenoid_valve" in expect or "solenoid" in expect:
+                        exp_sol = expect.get("solenoid_valve", expect.get("solenoid"))
+                        assert last_status["valve_open"] is exp_sol, (
+                            f"[{sc['id']} - {step_name}] Solenoid valve mismatch: "
+                            f"expected {exp_sol}, got {last_status['valve_open']}"
+                        )
+                    if "max_pump_duty" in expect:
+                        assert last_status.get("pump_duty", 0.0) <= expect["max_pump_duty"], (
+                            f"[{sc['id']} - {step_name}] Pump duty exceeded: "
+                            f"{last_status.get('pump_duty')} > {expect['max_pump_duty']}"
+                        )
+                    if "min_pump_duty" in expect:
+                        assert last_status.get("pump_duty", 0.0) >= expect["min_pump_duty"], (
+                            f"[{sc['id']} - {step_name}] Pump duty below minimum: "
+                            f"{last_status.get('pump_duty')} < {expect['min_pump_duty']}"
+                        )
+                    if "start_stop_io" in expect:
+                        assert last_status.get("start_stop_io") is expect["start_stop_io"], (
+                            f"[{sc['id']} - {step_name}] Start/Stop IO mismatch: "
+                            f"expected {expect['start_stop_io']}, got {last_status.get('start_stop_io')}"
+                        )
 
-        assert status["audio_active"] is sc["expected_audio"], (
-            f"Audio active mismatch for {sc['id']}: expected {sc['expected_audio']}, got {status['audio_active']}"
-        )
+            # บันทึกผลลัพธ์ของ Multi-Step Scenario ลง CSV Report
+            csv_record({
+                "scenario_id": sc["id"],
+                "scenario_name": sc["name"],
+                "execution_type": "MULTI_STEP_DSL",
+                "total_steps": len(sc["steps"]),
+                "last_step_state": last_status.get("state"),
+                "last_step_pressure": last_status.get("pressure_kpa"),
+                "estop_active": last_status.get("estop"),
+                "valve_open": last_status.get("valve_open"),
+                "verdict": "PASSED"
+            })
 
-        # 4. บันทึกผลลัพธ์ลง CSV Report
-        csv_record({
-            "scenario_id": sc["id"],
-            "scenario_name": sc["name"],
-            "tested_pressure": pressure,
-            "tested_state": status["state"],
-            "leak_active": status["leak"],
-            "audio_active": status["audio_active"],
-        })
+        else:
+            # -------------------------------------------------------------
+            # โหมด 2: Single-Step Scenario (Backward Compatibility)
+            # -------------------------------------------------------------
+            cmd = sc["scenario_cmd"]
+            res = hil.send_cmd(cmd)
+            assert "OK" in res, f"Failed to execute {cmd}: {res}"
+
+            wait_sec = sc.get("wait_sec", 0.0)
+            if wait_sec > 0:
+                time.sleep(wait_sec)
+
+            status = hil.send_cmd_json("hil status")
+
+            if "expected_state" in sc:
+                assert status["state"] == sc["expected_state"], (
+                    f"State mismatch for {sc['id']}: expected {sc['expected_state']}, got {status['state']}"
+                )
+
+            pressure = status["pressure_kpa"]
+            if "expected_min_pressure" in sc and "expected_max_pressure" in sc:
+                min_p = sc["expected_min_pressure"]
+                max_p = sc["expected_max_pressure"]
+                assert min_p <= pressure <= max_p, (
+                    f"Pressure out of range for {sc['id']}: {pressure} kPa (expected [{min_p}, {max_p}])"
+                )
+
+            if "expected_leak" in sc:
+                assert status["leak"] is sc["expected_leak"], (
+                    f"Leak flag mismatch for {sc['id']}: expected {sc['expected_leak']}, got {status['leak']}"
+                )
+
+            if "expected_audio" in sc:
+                assert status["audio_active"] is sc["expected_audio"], (
+                    f"Audio active mismatch for {sc['id']}: expected {sc['expected_audio']}, got {status['audio_active']}"
+                )
+
+            if "expected_estop" in sc:
+                assert status["estop"] is sc["expected_estop"], (
+                    f"Estop mismatch for {sc['id']}: expected {sc['expected_estop']}, got {status['estop']}"
+                )
+
+            if "expected_solenoid" in sc:
+                assert status["valve_open"] is sc["expected_solenoid"], (
+                    f"Solenoid mismatch for {sc['id']}: expected {sc['expected_solenoid']}, got {status['valve_open']}"
+                )
+
+            csv_record({
+                "scenario_id": sc["id"],
+                "scenario_name": sc["name"],
+                "execution_type": "SINGLE_STEP",
+                "tested_pressure": pressure,
+                "tested_state": status["state"],
+                "leak_active": status["leak"],
+                "audio_active": status["audio_active"],
+                "estop_active": status.get("estop"),
+                "valve_open": status.get("valve_open"),
+                "verdict": "PASSED"
+            })
+
     finally:
         # รีเซ็ตระบบกลับสู่สถานะ IDLE เพื่อไม่ให้ส่งผลกระทบต่อ Scenario ถัดไป
         hil.send_cmd("hil reset")
