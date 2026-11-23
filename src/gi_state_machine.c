@@ -225,14 +225,21 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
         float effective_duty = (g_status.state == GI_STATE_EMERGENCY_STOP) ? 0.0f : pump_duty;
         float dp = (k_pump * effective_duty) * dt;
 
-        // หักลบผลจากการรั่ว
-        if (g_status.leak_active || g_status.state == GI_STATE_LEAK_EVENT) {
-            dp -= k_leak * (g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA) * dt;
+        // หักลบผลจากการรั่ว (อัตรา 22 kPa/s)
+        if ((g_status.leak_active || g_status.state == GI_STATE_LEAK_EVENT) &&
+            g_status.current_pressure_kpa > AMBIENT_PRESSURE_KPA) {
+            float overpressure = g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA;
+            float leak_decay = (overpressure > 24.0f) ? k_leak : (k_leak * (overpressure / 24.0f));
+            if (leak_decay < 1.0f) leak_decay = 1.0f;
+            dp -= leak_decay * dt;
         }
 
-        // หักลบผลจากวาล์ว Solenoid ระบายก๊าซ
-        if (g_status.solenoid_valve_open) {
-            dp -= k_vent * (g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA) * dt;
+        // หักลบผลจากวาล์ว Solenoid ระบายก๊าซ (อัตรา 35 kPa/s)
+        if (g_status.solenoid_valve_open && g_status.current_pressure_kpa > AMBIENT_PRESSURE_KPA) {
+            float overpressure = g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA;
+            float vent_decay = (overpressure > 24.0f) ? k_vent : (k_vent * (overpressure / 24.0f));
+            if (vent_decay < 1.0f) vent_decay = 1.0f;
+            dp -= vent_decay * dt;
         } else if (effective_duty < 0.02f && g_status.current_pressure_kpa > AMBIENT_PRESSURE_KPA) {
             // ซึมออกตามธรรมชาติเล็กน้อย
             dp -= 0.3f * (g_status.current_pressure_kpa - AMBIENT_PRESSURE_KPA) * dt;
@@ -283,7 +290,7 @@ int gi_state_machine_apply_scenario(const char *name, float custom_val)
         g_status.solenoid_valve_open = false;
         g_status.auto_simulation = true;
         LOG_INF("Scenario applied: LOW_PRESSURE (P=%.2f kPa)", (double)g_status.current_pressure_kpa);
-    } else if (strcasecmp(name, "over_expansion") == 0) {
+    } else if (strcasecmp(name, "over_expansion") == 0 || strcasecmp(name, "overpressure") == 0) {
         // เมื่อความดันเกินเพดานความปลอดภัย (150 kPa) ระบบจะตัดเข้า EMERGENCY_STOP เพื่อระบายก๊าซทิ้ง
         g_status.current_pressure_kpa = (custom_val > 0) ? custom_val : 152.0f;
         g_status.state = GI_STATE_EMERGENCY_STOP;
