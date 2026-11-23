@@ -80,11 +80,13 @@ static void plant_sim_thread_entry(void *p1, void *p2, void *p3)
         float pump_duty = kr260_pwm_get_duty_cycle();
         uint32_t pwm_freq = kr260_pwm_get_frequency_hz();
         bool start_stop_io = io_controller_get_start_stop();
-        bool estop_io = io_controller_get_estop();
+        bool doctor_estop_btn = io_controller_get_doctor_estop();
+        bool kr260_tripped = io_controller_get_safety_tripped();
         bool solenoid_open = io_controller_get_solenoid_valve();
 
         // 2. อัปเดต Finite State Machine
-        gi_state_machine_update(dt, pump_duty, pwm_freq, start_stop_io, estop_io, solenoid_open);
+        gi_state_machine_update(dt, pump_duty, pwm_freq, start_stop_io,
+                                doctor_estop_btn, kr260_tripped, solenoid_open);
 
         // 3. อ่านสถานะปัจจุบันของระบบ
         gi_system_status_t sys_stat;
@@ -175,7 +177,8 @@ static int cmd_hil_status(const struct shell *sh, size_t argc, char **argv)
         "{\"chip_id\": \"0x%02X\", \"state\": \"%s\", \"state_id\": %d, "
         "\"pressure_kpa\": %.2f, \"target_kpa\": %.2f, \"pump_duty\": %.2f, \"pwm_freq_hz\": %u, "
         "\"leak\": %s, \"valve_open\": %s, \"audio_active\": %s, "
-        "\"start_stop_io\": %s, \"estop\": %s, \"camera_scene\": \"%s\", \"auto\": %s}",
+        "\"start_stop_io\": %s, \"estop\": %s, \"doctor_estop_btn\": %s, \"kr260_safety_tripped\": %s, "
+        "\"camera_scene\": \"%s\", \"auto\": %s}",
         g_i2c_buffer[REG_CHIP_ID],
         gi_state_to_str(s.state),
         (int)s.state,
@@ -188,6 +191,8 @@ static int cmd_hil_status(const struct shell *sh, size_t argc, char **argv)
         s.audio_leak_active ? "true" : "false",
         s.start_stop_io ? "true" : "false",
         s.estop_active ? "true" : "false",
+        s.doctor_estop_btn ? "true" : "false",
+        s.kr260_safety_tripped ? "true" : "false",
         s.camera_scene,
         s.auto_simulation ? "true" : "false");
     k_mutex_unlock(&g_i2c_mutex);
@@ -276,25 +281,33 @@ static int cmd_hil_audio_leak(const struct shell *sh, size_t argc, char **argv)
 static int cmd_hil_button(const struct shell *sh, size_t argc, char **argv)
 {
     if (argc < 2) {
-        shell_error(sh, "Usage: hil button <start|stop|pulse> [pulse_ms]");
+        shell_error(sh, "Usage: hil button <start|stop|estop_on|estop_off|pulse|status> [pulse_ms]");
         return -EINVAL;
     }
 
     if (strcasecmp(argv[1], "start") == 0) {
         io_controller_set_doctor_button(true);
-        shell_print(sh, "OK: Doctor Button -> START (Driven 3.3V to KR260 to start AI & PID)");
+        shell_print(sh, "OK: Doctor Button -> START (Driven 3.3V to KR260 Pin D3 to start AI & PID)");
     } else if (strcasecmp(argv[1], "stop") == 0) {
         io_controller_set_doctor_button(false);
-        shell_print(sh, "OK: Doctor Button -> STOP (Driven 0V to KR260 to stop and vent)");
+        shell_print(sh, "OK: Doctor Button -> STOP (Driven 0V to KR260 Pin D3 to stop and vent)");
+    } else if (strcasecmp(argv[1], "estop_on") == 0 || strcasecmp(argv[1], "estop") == 0) {
+        io_controller_set_doctor_estop(true);
+        shell_print(sh, "OK: Doctor Button -> EMERGENCY STOP PRESSED (Driven 3.3V to KR260 Pin D5)");
+    } else if (strcasecmp(argv[1], "estop_off") == 0) {
+        io_controller_set_doctor_estop(false);
+        shell_print(sh, "OK: Doctor Button -> EMERGENCY STOP RELEASED (Driven 0V to KR260 Pin D5)");
     } else if (strcasecmp(argv[1], "pulse") == 0) {
         uint32_t ms = (argc >= 3) ? atoi(argv[2]) : 200;
         io_controller_pulse_doctor_button(ms);
         shell_print(sh, "OK: Doctor Button -> Momentary Pulse (%u ms) sent to KR260", ms);
     } else if (strcasecmp(argv[1], "status") == 0) {
-        bool active = io_controller_get_start_stop();
-        shell_print(sh, "{\"button\": \"%s\", \"level\": %d}", active ? "START" : "STOP", active ? 1 : 0);
+        bool start_act = io_controller_get_start_stop();
+        bool estop_act = io_controller_get_doctor_estop();
+        shell_print(sh, "{\"button_start\": %s, \"button_estop\": %s}",
+                    start_act ? "true" : "false", estop_act ? "true" : "false");
     } else {
-        shell_error(sh, "Unknown action: %s (Use 'start', 'stop', 'pulse', or 'status')", argv[1]);
+        shell_error(sh, "Unknown action: %s (Use 'start', 'stop', 'estop_on', 'estop_off', 'pulse', or 'status')", argv[1]);
         return -EINVAL;
     }
     return 0;
@@ -322,7 +335,20 @@ static int cmd_hil_estop(const struct shell *sh, size_t argc, char **argv)
 
     int val = atoi(argv[1]);
     io_controller_set_mock_estop(val != 0);
-    shell_print(sh, "OK: E-Stop IO set to %d", val);
+    shell_print(sh, "OK: E-Stop IO (Doctor Button & Safety Flag) set to %d", val);
+    return 0;
+}
+
+static int cmd_hil_safety_tripped(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc < 2) {
+        shell_error(sh, "Usage: hil set_safety_tripped <0|1>");
+        return -EINVAL;
+    }
+
+    int val = atoi(argv[1]);
+    io_controller_set_mock_safety_tripped(val != 0);
+    shell_print(sh, "OK: KR260 Safety Tripped Status IO set to %d", val);
     return 0;
 }
 
@@ -359,12 +385,12 @@ static int cmd_hil_test_gpio(const struct shell *sh, size_t argc, char **argv)
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
 
-    int d3_out = -1, d4_sol_in = -1, d5_estop_in = -1;
-    io_controller_get_physical_levels(&d3_out, &d4_sol_in, &d5_estop_in);
+    int d3_out = -1, d5_btn_out = -1, d4_sol_in = -1, d6_trip_in = -1;
+    io_controller_get_physical_levels(&d3_out, &d5_btn_out, &d4_sol_in, &d6_trip_in);
 
     shell_print(sh,
-        "{\"physical_gpio\": {\"d3_button_out\": %d, \"d4_solenoid_in\": %d, \"d5_estop_in\": %d}}",
-        d3_out, d4_sol_in, d5_estop_in);
+        "{\"physical_gpio\": {\"d3_button_out\": %d, \"d5_estop_btn_out\": %d, \"d4_solenoid_in\": %d, \"d6_safety_tripped_in\": %d}}",
+        d3_out, d5_btn_out, d4_sol_in, d6_trip_in);
     return 0;
 }
 
@@ -418,7 +444,9 @@ static int cmd_hil_test_interfaces(const struct shell *sh, size_t argc, char **a
     const char *i2c_status = (i2c_ret == 0 && chip_id == TARGET_I2C_ADDR) ? "PASS" : "WAIT_WIRING";
 
     bool io_start = io_controller_get_start_stop();
+    bool io_estop_btn = io_controller_get_doctor_estop();
     bool io_sol = io_controller_get_solenoid_valve();
+    bool io_tripped = io_controller_get_safety_tripped();
     bool io_estop = io_controller_get_estop();
 
     float pwm_duty = kr260_pwm_get_duty_cycle();
@@ -430,12 +458,13 @@ static int cmd_hil_test_interfaces(const struct shell *sh, size_t argc, char **a
     shell_print(sh,
         "{\"interface_loopback_test\": {"
         "\"i2c_target_0x58\": \"%s\", "
-        "\"io_lines\": {\"start_stop\": %s, \"solenoid\": %s, \"estop\": %s}, "
+        "\"io_lines\": {\"start_stop\": %s, \"doctor_estop_btn\": %s, \"solenoid\": %s, \"kr260_safety_tripped\": %s, \"estop\": %s}, "
         "\"pwm_capture\": {\"active\": %s, \"duty_pct\": %.2f, \"freq_hz\": %u}, "
         "\"i2s_audio_leak\": {\"active\": %s}, "
         "\"status\": \"READY\"}}",
         i2c_status,
-        io_start ? "true" : "false", io_sol ? "true" : "false", io_estop ? "true" : "false",
+        io_start ? "true" : "false", io_estop_btn ? "true" : "false", io_sol ? "true" : "false",
+        io_tripped ? "true" : "false", io_estop ? "true" : "false",
         pwm_active ? "true" : "false", (double)(pwm_duty * 100.0f), pwm_freq,
         i2s_active ? "true" : "false"
     );
@@ -452,13 +481,14 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_hil,
     SHELL_CMD(auto, NULL, "Enable or disable auto physics simulation <0|1>", cmd_hil_auto),
     SHELL_CMD(inject_leak, NULL, "Inject or clear gas leak <0|1>", cmd_hil_inject_leak),
     SHELL_CMD(audio_leak, NULL, "Control AC Audio Leak Generator <0|1>", cmd_hil_audio_leak),
-    SHELL_CMD(button, NULL, "Simulate Doctor Start/Stop button <start|stop|pulse|status>", cmd_hil_button),
+    SHELL_CMD(button, NULL, "Simulate Doctor Start/Stop/E-Stop button <start|stop|estop_on|estop_off|pulse|status>", cmd_hil_button),
     SHELL_CMD(set_start_stop, NULL, "Set Start/Stop IO command <0|1>", cmd_hil_start_stop),
-    SHELL_CMD(set_estop, NULL, "Set Emergency Stop IO <0|1>", cmd_hil_estop),
+    SHELL_CMD(set_estop, NULL, "Set Doctor E-Stop & Safety Flag <0|1>", cmd_hil_estop),
+    SHELL_CMD(set_safety_tripped, NULL, "Set KR260 Safety Tripped Status IO <0|1>", cmd_hil_safety_tripped),
     SHELL_CMD(set_solenoid, NULL, "Set Solenoid Purge Valve <0|1>", cmd_hil_solenoid),
     SHELL_CMD(reset, NULL, "Reset plant simulator to default IDLE", cmd_hil_reset),
     SHELL_CMD(loopback, NULL, "Execute I2C loopback test", cmd_hil_loopback),
-    SHELL_CMD(test_gpio, NULL, "Read physical GPIO loopback levels (D3, D4, D5)", cmd_hil_test_gpio),
+    SHELL_CMD(test_gpio, NULL, "Read physical GPIO levels (D3, D5, D4, D6)", cmd_hil_test_gpio),
     SHELL_CMD(test_interfaces, NULL, "Execute all interface loopback & status tests", cmd_hil_test_interfaces),
     SHELL_SUBCMD_SET_END
 );

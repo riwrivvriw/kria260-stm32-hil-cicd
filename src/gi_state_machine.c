@@ -32,6 +32,8 @@ void gi_state_machine_init(void)
     g_status.audio_leak_active = false;
     g_status.start_stop_io = false;
     g_status.estop_active = false;
+    g_status.doctor_estop_btn = false;
+    g_status.kr260_safety_tripped = false;
     g_status.auto_simulation = true;
     g_status.camera_scene = "STANDBY_PRE_PROCEDURE";
 
@@ -106,24 +108,29 @@ void gi_state_machine_set_state(gi_state_t new_state)
 }
 
 void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
-                             bool start_stop_pin, bool estop_pin, bool solenoid_valve_pin)
+                             bool start_stop_pin, bool doctor_estop_btn,
+                             bool kr260_safety_tripped, bool solenoid_valve_pin)
 {
     k_mutex_lock(&g_sm_mutex, K_FOREVER);
 
     g_status.pump_duty = pump_duty;
     g_status.pwm_freq_hz = pwm_freq;
     g_status.start_stop_io = start_stop_pin;
-    g_status.estop_active = estop_pin;
+    g_status.doctor_estop_btn = doctor_estop_btn;
+    g_status.kr260_safety_tripped = kr260_safety_tripped;
+
+    bool estop_asserted = doctor_estop_btn || kr260_safety_tripped;
+    g_status.estop_active = estop_asserted;
     g_status.solenoid_valve_open = solenoid_valve_pin;
 
     // 1. ตรวจสอบ Emergency Stop (ความสำคัญสูงสุด)
-    if (estop_pin || g_status.current_pressure_kpa >= OVERPRESSURE_LIMIT_KPA) {
+    if (estop_asserted || g_status.current_pressure_kpa >= OVERPRESSURE_LIMIT_KPA) {
         if (g_status.state != GI_STATE_EMERGENCY_STOP) {
             g_status.state = GI_STATE_EMERGENCY_STOP;
             g_status.solenoid_valve_open = true;
             g_status.audio_leak_active = false;
-            LOG_ERR("EMERGENCY STOP TRIGGERED! (P=%.2f kPa, EstopPin=%d)",
-                    (double)g_status.current_pressure_kpa, estop_pin);
+            LOG_ERR("EMERGENCY STOP TRIGGERED! (P=%.2f kPa, DoctorBtn=%d, KR260Tripped=%d)",
+                    (double)g_status.current_pressure_kpa, doctor_estop_btn, kr260_safety_tripped);
         }
     }
 
@@ -203,7 +210,7 @@ void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
         g_status.solenoid_valve_open = true;
         g_status.audio_leak_active = false;
         // ปลด E-Stop ผ่านคำสั่ง reset หรือปล่อยขาสัญญาณ
-        if (!estop_pin && g_status.current_pressure_kpa <= AMBIENT_PRESSURE_KPA + 2.0f) {
+        if (!estop_asserted && g_status.current_pressure_kpa <= AMBIENT_PRESSURE_KPA + 2.0f) {
             // รอคำสั่ง Explicit Reset จากผู้ใช้
         }
         break;
@@ -363,6 +370,8 @@ void gi_state_machine_reset(void)
     g_status.solenoid_valve_open = false;
     g_status.audio_leak_active = false;
     g_status.estop_active = false;
+    g_status.doctor_estop_btn = false;
+    g_status.kr260_safety_tripped = false;
     g_status.auto_simulation = true;
     g_status.camera_scene = gi_state_get_camera_scene(GI_STATE_IDLE);
     LOG_INF("GI State Machine Reset to IDLE.");

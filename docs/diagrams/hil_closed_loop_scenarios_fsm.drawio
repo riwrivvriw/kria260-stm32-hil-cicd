@@ -1,18 +1,20 @@
-<mxfile host="app.diagrams.net" modified="2026-11-19T07:35:00.000Z" agent="Antigravity HIL" version="24.0.0">
+<mxfile host="app.diagrams.net" modified="2026-11-23T02:40:00.000Z" agent="Antigravity HIL" version="24.0.0">
   <diagram id="hil-state-machine" name="HIL Closed-Loop Clinical State Machine">
-    <mxGraphModel dx="1600" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1200" math="0" shadow="0">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2100" pageHeight="1400" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
+        <!-- ============================================================= -->
         <!-- HIL CONTROLLER PC -->
-        <mxCell id="pc_host" value="&lt;b&gt;HIL Controller (Linux Host PC)&lt;/b&gt;&lt;br&gt;&amp;bull; Pytest Testbench Orchestrator&lt;br&gt;&amp;bull; &lt;b&gt;Virtual Video Streamer:&lt;/b&gt; tools/video_stream_mock.py&lt;br&gt;&lt;i&gt;(USB Serial 115200 + Gigabit Ethernet)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e293b;strokeColor=#0f172a;fontColor=#ffffff;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
-          <mxGeometry x="50" y="240" width="280" height="95" as="geometry" />
+        <!-- ============================================================= -->
+        <mxCell id="pc_host" value="&lt;b&gt;HIL Controller (Linux Host PC)&lt;/b&gt;&lt;br&gt;&amp;bull; Pytest Testbench Orchestrator (Multi-Step Scenario DSL)&lt;br&gt;&amp;bull; &lt;b&gt;Virtual Video Streamer:&lt;/b&gt; tools/video_stream_mock.py&lt;br&gt;&lt;i&gt;(USB Virtual COM Port 115200 + Gigabit Ethernet LAN)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e293b;strokeColor=#0f172a;fontColor=#ffffff;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="50" y="240" width="310" height="100" as="geometry" />
         </mxCell>
 
         <!-- IDLE STATE -->
         <mxCell id="state_idle" value="&lt;b&gt;Idle State&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot; color=&quot;#475569&quot;&gt;(Wait for Doctor Button /&lt;br&gt;Testbench Command)&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#64748b;strokeWidth=2;fontColor=#0f172a;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
-          <mxGeometry x="120" y="480" width="140" height="80" as="geometry" />
+          <mxGeometry x="135" y="490" width="140" height="80" as="geometry" />
         </mxCell>
 
         <!-- HOST -> IDLE -->
@@ -23,12 +25,12 @@
         </mxCell>
 
         <!-- IDLE -> HOST (Results) -->
-        <mxCell id="edge_idle_host" value="Send back test results (CSV)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.2;entryY=1;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#10b981;fontColor=#047857;fontSize=11;dashed=1;" edge="1" parent="1" source="state_idle" target="pc_host">
+        <mxCell id="edge_idle_host" value="Send back test results (CSV/Log)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.2;entryY=1;entryDx=0;entryDy=0;strokeWidth=1.5;strokeColor=#10b981;fontColor=#047857;fontSize=11;dashed=1;" edge="1" parent="1" source="state_idle" target="pc_host">
           <mxGeometry x="-0.2" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="80" y="520" />
+              <mxPoint x="80" y="530" />
               <mxPoint x="80" y="380" />
-              <mxPoint x="106" y="380" />
+              <mxPoint x="112" y="380" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
@@ -36,95 +38,129 @@
 
         <!-- SELECT TEST CASE DIAMOND -->
         <mxCell id="select_case" value="&lt;b&gt;Select&lt;br&gt;Test Case&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;strokeWidth=2;fontColor=#92400e;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
-          <mxGeometry x="350" y="475" width="130" height="90" as="geometry" />
+          <mxGeometry x="380" y="485" width="130" height="90" as="geometry" />
         </mxCell>
 
         <!-- IDLE -> SELECT -->
-        <mxCell id="edge_idle_select" value="Send Test Cases" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#475569;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="state_idle" target="select_case">
+        <mxCell id="edge_idle_select" value="Inject Scenario" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#475569;fontColor=#334155;fontSize=11;" edge="1" parent="1" source="state_idle" target="select_case">
           <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================= -->
+        <!-- STM32 HIL PLANT CONTAINER (CONTAINING SCENARIOS & IO BANK)     -->
+        <!-- ============================================================= -->
+        <mxCell id="stm32_container" value="&lt;b&gt;STM32H563ZI HIL Plant &amp;amp; Sensor Simulator&lt;/b&gt; (Zephyr RTOS 3.7.0)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#334155;strokeWidth=2;align=left;verticalAlign=top;spacingLeft=15;spacingTop=10;fontColor=#0f172a;fontSize=14;fontFamily=Helvetica;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="540" y="50" width="560" height="1060" as="geometry" />
         </mxCell>
 
         <!-- ============================================================= -->
         <!-- SCENARIO 1: OVER-EXPANSION -->
         <!-- ============================================================= -->
-        <mxCell id="sc1_box" value="&lt;b&gt;Scenario 1: Over-Expansion Hazard (152 kPa)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#dc2626&quot; size=&quot;1&quot;&gt;State: EMERGENCY_STOP | Camera: EMERGENCY_FREEZE_WARNING_OVERLAY&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#ef4444;strokeWidth=2;align=center;verticalAlign=top;fontColor=#991b1b;fontSize=13;fontFamily=Helvetica;" vertex="1" parent="1">
-          <mxGeometry x="540" y="50" width="450" height="210" as="geometry" />
+        <mxCell id="sc1_box" value="&lt;b&gt;Scenario 1: Over-Expansion Hazard (152 kPa)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#dc2626&quot; size=&quot;1&quot;&gt;State: EMERGENCY_STOP | Camera: EMERGENCY_FREEZE_WARNING_OVERLAY&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#ef4444;strokeWidth=2;align=center;verticalAlign=top;fontColor=#991b1b;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="560" y="90" width="520" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="sc1_press" value="&lt;b&gt;Pressure&lt;/b&gt;&lt;br&gt;152.0 kPa (&amp;gt; 150 limit)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#f87171;fontColor=#7f1d1d;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="90" width="190" height="45" as="geometry" />
+        <mxCell id="sc1_press" value="&lt;b&gt;Pressure I2C&lt;/b&gt;&lt;br&gt;152.0 kPa (&amp;gt; 150 limit)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#f87171;fontColor=#7f1d1d;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="125" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc1_sound" value="&lt;b&gt;Sound: Vent Exhaust&lt;/b&gt;&lt;br&gt;Rapid Whoosh Sound (Normal Release)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=10.5;" vertex="1" parent="1">
-          <mxGeometry x="770" y="90" width="200" height="45" as="geometry" />
+        <mxCell id="sc1_sound" value="&lt;b&gt;Sound: Vent Exhaust&lt;/b&gt;&lt;br&gt;Rapid Whoosh Sound (Normal Release)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="125" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc1_pwm" value="&lt;b&gt;Air Pump PWM&lt;/b&gt;&lt;br&gt;PWM 0% (Forced Cutoff)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#f87171;fontColor=#7f1d1d;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="150" width="190" height="45" as="geometry" />
+        <mxCell id="sc1_pwm" value="&lt;b&gt;Air Pump Capture&lt;/b&gt;&lt;br&gt;PWM 0% (Forced Cutoff &amp;lt; 10ns)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#f87171;fontColor=#7f1d1d;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="175" width="230" height="40" as="geometry" />
         </mxCell>
         <mxCell id="sc1_valve" value="&lt;b&gt;Solenoid Valve&lt;/b&gt;&lt;br&gt;Open Valve (0V GPIO Vent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#f87171;fontColor=#7f1d1d;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="770" y="150" width="200" height="45" as="geometry" />
+          <mxGeometry x="830" y="175" width="230" height="40" as="geometry" />
         </mxCell>
 
         <!-- ============================================================= -->
         <!-- SCENARIO 2: NORMAL / OPTIMAL -->
         <!-- ============================================================= -->
-        <mxCell id="sc2_box" value="&lt;b&gt;Scenario 2: Normal / Optimal Inspection (125 kPa)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#16a34a&quot; size=&quot;1&quot;&gt;State: STABLE_INSPECTION | Camera: MUCOSAL_INSPECTION_POLYP_ACTIVE (Lumen Open)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#22c55e;strokeWidth=2;align=center;verticalAlign=top;fontColor=#166534;fontSize=13;fontFamily=Helvetica;" vertex="1" parent="1">
-          <mxGeometry x="540" y="290" width="450" height="210" as="geometry" />
+        <mxCell id="sc2_box" value="&lt;b&gt;Scenario 2: Normal / Optimal Inspection (125 kPa)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#16a34a&quot; size=&quot;1&quot;&gt;State: STABLE_INSPECTION | Camera: MUCOSAL_INSPECTION_POLYP_ACTIVE (Lumen Open)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#22c55e;strokeWidth=2;align=center;verticalAlign=top;fontColor=#166534;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="560" y="245" width="520" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="sc2_press" value="&lt;b&gt;Pressure++&lt;/b&gt;&lt;br&gt;Steady Target 125.0 kPa" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#4ade80;fontColor=#14532d;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="330" width="190" height="45" as="geometry" />
+        <mxCell id="sc2_press" value="&lt;b&gt;Pressure I2C&lt;/b&gt;&lt;br&gt;Steady Target 125.0 kPa" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#4ade80;fontColor=#14532d;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="280" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc2_sound" value="&lt;b&gt;Sound: Normal Airflow&lt;/b&gt;&lt;br&gt;Low Steady Laminar Hum (Normal Train Set)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=10.5;" vertex="1" parent="1">
-          <mxGeometry x="770" y="330" width="200" height="45" as="geometry" />
+        <mxCell id="sc2_sound" value="&lt;b&gt;Sound: Normal Airflow&lt;/b&gt;&lt;br&gt;Low Steady Laminar Hum" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="280" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc2_pwm" value="&lt;b&gt;Air Pump PWM&lt;/b&gt;&lt;br&gt;Low/Steady PWM ~15%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#4ade80;fontColor=#14532d;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="390" width="190" height="45" as="geometry" />
+        <mxCell id="sc2_pwm" value="&lt;b&gt;Air Pump Capture&lt;/b&gt;&lt;br&gt;Low/Steady PWM ~15%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#4ade80;fontColor=#14532d;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="330" width="230" height="40" as="geometry" />
         </mxCell>
         <mxCell id="sc2_valve" value="&lt;b&gt;Solenoid Valve&lt;/b&gt;&lt;br&gt;Close Valve (3.3V GPIO Hold)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#4ade80;fontColor=#14532d;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="770" y="390" width="200" height="45" as="geometry" />
+          <mxGeometry x="830" y="330" width="230" height="40" as="geometry" />
         </mxCell>
 
         <!-- ============================================================= -->
         <!-- SCENARIO 3: LOW PRESSURE -->
         <!-- ============================================================= -->
-        <mxCell id="sc3_box" value="&lt;b&gt;Scenario 3: Low Pressure / Under-Inflation (110 kPa)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2563eb&quot; size=&quot;1&quot;&gt;State: INSUFFLATION | Camera: LUMEN_EXPANDING_INSUFFLATION (Lumen Closed/Narrow)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#3b82f6;strokeWidth=2;align=center;verticalAlign=top;fontColor=#1e40af;fontSize=13;fontFamily=Helvetica;" vertex="1" parent="1">
-          <mxGeometry x="540" y="530" width="450" height="210" as="geometry" />
+        <mxCell id="sc3_box" value="&lt;b&gt;Scenario 3: Low Pressure / Under-Inflation (110 kPa)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#2563eb&quot; size=&quot;1&quot;&gt;State: INSUFFLATION | Camera: LUMEN_EXPANDING_INSUFFLATION (Lumen Narrow)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#3b82f6;strokeWidth=2;align=center;verticalAlign=top;fontColor=#1e40af;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="560" y="400" width="520" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="sc3_press" value="&lt;b&gt;Pressure++&lt;/b&gt;&lt;br&gt;Deficit Level 110.0 kPa" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#60a5fa;fontColor=#1e3a8a;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="570" width="190" height="45" as="geometry" />
+        <mxCell id="sc3_press" value="&lt;b&gt;Pressure I2C&lt;/b&gt;&lt;br&gt;Deficit Level 110.0 kPa" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#60a5fa;fontColor=#1e3a8a;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="435" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc3_sound" value="&lt;b&gt;Sound: Pump Ramping&lt;/b&gt;&lt;br&gt;Higher RPM Motor Whir (Normal Train Set)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=10.5;" vertex="1" parent="1">
-          <mxGeometry x="770" y="570" width="200" height="45" as="geometry" />
+        <mxCell id="sc3_sound" value="&lt;b&gt;Sound: Pump Ramping&lt;/b&gt;&lt;br&gt;Higher RPM Motor Whir" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#3b82f6;fontColor=#1e3a8a;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="435" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc3_pwm" value="&lt;b&gt;Air Pump PWM&lt;/b&gt;&lt;br&gt;High PWM (&amp;gt; 60%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#60a5fa;fontColor=#1e3a8a;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="630" width="190" height="45" as="geometry" />
+        <mxCell id="sc3_pwm" value="&lt;b&gt;Air Pump Capture&lt;/b&gt;&lt;br&gt;High PWM (&amp;gt; 60%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#60a5fa;fontColor=#1e3a8a;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="485" width="230" height="40" as="geometry" />
         </mxCell>
         <mxCell id="sc3_valve" value="&lt;b&gt;Solenoid Valve&lt;/b&gt;&lt;br&gt;Close Valve (3.3V GPIO Hold)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#60a5fa;fontColor=#1e3a8a;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="770" y="630" width="200" height="45" as="geometry" />
+          <mxGeometry x="830" y="485" width="230" height="40" as="geometry" />
         </mxCell>
 
         <!-- ============================================================= -->
         <!-- SCENARIO 4: GAS LEAK -->
         <!-- ============================================================= -->
-        <mxCell id="sc4_box" value="&lt;b&gt;Scenario 4: Colon Wall Gas Leak Case (Acoustic Hiss)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#d97706&quot; size=&quot;1&quot;&gt;State: LEAK_EVENT | Camera: LUMEN_COLLAPSE_LEAK_WARNING (Deflating Lumen)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbeb;strokeColor=#f59e0b;strokeWidth=2;align=center;verticalAlign=top;fontColor=#b45309;fontSize=13;fontFamily=Helvetica;" vertex="1" parent="1">
-          <mxGeometry x="540" y="770" width="450" height="210" as="geometry" />
+        <mxCell id="sc4_box" value="&lt;b&gt;Scenario 4: Colon Wall Gas Leak Case (Acoustic Hiss)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#d97706&quot; size=&quot;1&quot;&gt;State: LEAK_EVENT | Camera: LUMEN_COLLAPSE_LEAK_WARNING (Deflating Lumen)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffbeb;strokeColor=#f59e0b;strokeWidth=2;align=center;verticalAlign=top;fontColor=#b45309;fontSize=12;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="560" y="555" width="520" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="sc4_press" value="&lt;b&gt;Pressure-- / Pressure++&lt;/b&gt;&lt;br&gt;Drain 22 kPa/s vs Feedforward" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#fbbf24;fontColor=#78350f;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="810" width="190" height="45" as="geometry" />
+        <mxCell id="sc4_press" value="&lt;b&gt;Pressure I2C&lt;/b&gt;&lt;br&gt;Drain 22 kPa/s vs Feedforward" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#fbbf24;fontColor=#78350f;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="590" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc4_sound" value="&lt;b&gt;Sound: ABNORMAL HISS&lt;/b&gt;&lt;br&gt;3 kHz High-Freq Acoustic Sine (Leak Anomaly!)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#ef4444;strokeWidth=2;fontColor=#991b1b;fontSize=10.5;" vertex="1" parent="1">
-          <mxGeometry x="770" y="810" width="200" height="45" as="geometry" />
+        <mxCell id="sc4_sound" value="&lt;b&gt;Sound: ABNORMAL HISS&lt;/b&gt;&lt;br&gt;3 kHz High-Freq Acoustic Sine (Leak Anomaly!)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#ef4444;strokeWidth=2;fontColor=#991b1b;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="830" y="590" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="sc4_pwm" value="&lt;b&gt;Air Pump PWM&lt;/b&gt;&lt;br&gt;Boost PWM (Compensation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#fbbf24;fontColor=#78350f;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="560" y="870" width="190" height="45" as="geometry" />
+        <mxCell id="sc4_pwm" value="&lt;b&gt;Air Pump Capture&lt;/b&gt;&lt;br&gt;Boost PWM (Compensation)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#fbbf24;fontColor=#78350f;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="640" width="230" height="40" as="geometry" />
         </mxCell>
         <mxCell id="sc4_valve" value="&lt;b&gt;Solenoid Valve&lt;/b&gt;&lt;br&gt;Close Valve (3.3V GPIO Hold)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#fbbf24;fontColor=#78350f;fontSize=11;" vertex="1" parent="1">
-          <mxGeometry x="770" y="870" width="200" height="45" as="geometry" />
+          <mxGeometry x="830" y="640" width="230" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================= -->
+        <!-- STM32 HARDWARE PINOUT / IO BANK                                -->
+        <!-- ============================================================= -->
+        <mxCell id="stm32_io_bank" value="&lt;b&gt;STM32 Physical IO Pin Mapping (Arduino Connector Headers)&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#64748b;strokeWidth=1.5;align=left;verticalAlign=top;spacingLeft=10;fontColor=#1e293b;fontSize=11;fontFamily=Helvetica;" vertex="1" parent="1">
+          <mxGeometry x="560" y="715" width="520" height="375" as="geometry" />
+        </mxCell>
+
+        <!-- Digital Audio I2S Pins -->
+        <mxCell id="pin_i2s" value="&lt;b&gt;I2S2 Digital Audio Bus (Master TX / 16 kHz 16-bit):&lt;/b&gt;&lt;br&gt;&amp;bull; &lt;b&gt;PB13 (D18):&lt;/b&gt; I2S2_CK (BCLK / Continuous Bit Clock)&lt;br&gt;&amp;bull; &lt;b&gt;PB12 (D19):&lt;/b&gt; I2S2_WS (LRCLK / Word Select)&lt;br&gt;&amp;bull; &lt;b&gt;PB15 (D17):&lt;/b&gt; I2S2_SD (Serial PCM Data Out)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#38bdf8;fontColor=#0369a1;fontSize=10.5;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="580" y="745" width="480" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- I2C Target Bus -->
+        <mxCell id="pin_i2c" value="&lt;b&gt;I2C1 Sensor Bus (Target / Address 0x58):&lt;/b&gt;&lt;br&gt;&amp;bull; &lt;b&gt;PB8 (D15):&lt;/b&gt; I2C1_SCL | &amp;bull; &lt;b&gt;PB9 (D14):&lt;/b&gt; I2C1_SDA&lt;br&gt;&lt;i&gt;*Requires Pull-ups (Integrated 1.8k on KR260 RPi Header J10)*&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e7ff;strokeColor=#6366f1;fontColor=#3730a3;fontSize=10.5;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="580" y="820" width="480" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Dual E-Stop & Controls Pins -->
+        <mxCell id="pin_estop_start" value="&lt;b&gt;Dual E-Stop &amp;amp; Actuation Signals (3.3V LVCMOS):&lt;/b&gt;&lt;br&gt;&amp;bull; &lt;b&gt;PE13 (D3):&lt;/b&gt; Doctor Start/Stop Button Output (&amp;rarr; KR260 Input)&lt;br&gt;&amp;bull; &lt;b&gt;PE11 (D5):&lt;/b&gt; Mock Doctor E-Stop Button Output (&amp;rarr; KR260 Input Cutoff)&lt;br&gt;&amp;bull; &lt;b&gt;PE9 (D6):&lt;/b&gt; KR260 Safety Tripped Status Input (&amp;larr; KR260 Output)&lt;br&gt;&amp;bull; &lt;b&gt;PE14 (D4):&lt;/b&gt; Solenoid Relief Valve Command Input (&amp;larr; KR260 Output)&lt;br&gt;&amp;bull; &lt;b&gt;PF15 (D2):&lt;/b&gt; Air Pump PWM Frequency/Duty Capture (&amp;larr; KR260 RTL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef2f2;strokeColor=#f87171;fontColor=#991b1b;fontSize=10.5;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="580" y="885" width="480" height="95" as="geometry" />
+        </mxCell>
+
+        <!-- Ground Pin -->
+        <mxCell id="pin_gnd" value="&lt;b&gt;Common Ground Reference:&lt;/b&gt; GND (Nucleo CN7 Pin 20 / CN8 Pin 9) &amp;harr; KR260 Common GND" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#94a3b8;fontColor=#475569;fontSize=10.5;align=center;" vertex="1" parent="1">
+          <mxGeometry x="580" y="990" width="480" height="30" as="geometry" />
         </mxCell>
 
         <!-- SELECT -> SCENARIOS EDGES -->
         <mxCell id="edge_sel_sc1" value="Over-Expansion" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#dc2626;fontColor=#b91c1c;fontSize=11;" edge="1" parent="1" source="select_case" target="sc1_box">
           <mxGeometry x="-0.3" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="415" y="155" />
+              <mxPoint x="445" y="160" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
@@ -132,7 +168,7 @@
         <mxCell id="edge_sel_sc2" value="Normal / Optimal" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#16a34a;fontColor=#15803d;fontSize=11;" edge="1" parent="1" source="select_case" target="sc2_box">
           <mxGeometry x="-0.2" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="415" y="395" />
+              <mxPoint x="445" y="315" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
@@ -140,7 +176,7 @@
         <mxCell id="edge_sel_sc3" value="Low Pressure" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#2563eb;fontColor=#1d4ed8;fontSize=11;" edge="1" parent="1" source="select_case" target="sc3_box">
           <mxGeometry x="-0.2" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="415" y="635" />
+              <mxPoint x="445" y="470" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
@@ -148,96 +184,112 @@
         <mxCell id="edge_sel_sc4" value="Gas Leak" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#d97706;fontColor=#b45309;fontSize=11;" edge="1" parent="1" source="select_case" target="sc4_box">
           <mxGeometry x="-0.3" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="415" y="875" />
+              <mxPoint x="445" y="625" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
 
         <!-- ============================================================= -->
-        <!-- KRIA KR260 FPGA (DUT) -->
+        <!-- KRIA KR260 FPGA (DUT)                                         -->
         <!-- ============================================================= -->
-        <mxCell id="fpga_dut" value="&lt;b&gt;Target Under Test (DUT)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;4&quot;&gt;&lt;b&gt;AMD Kria KR260&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#38bdf8&quot;&gt;FPGA PL Fabric + ARM Cortex-A53 (Linux/PetaLinux)&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;div align=&quot;left&quot; style=&quot;padding-left:12px;&quot;&gt;&amp;bull; &lt;b&gt;Virtual Camera Device:&lt;/b&gt; &lt;font color=&quot;#10b981&quot;&gt;&lt;b&gt;/dev/video0 (v4l2loopback)&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Vitis AI Vision DPU:&lt;/b&gt; &lt;u&gt;Inspects GI Cavity: LUMEN OPEN vs CLOSED&lt;/u&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Vitis AI Acoustic Anomaly Detector (DPU):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;i&gt;- Trained strictly on Normal Airflow sound baseline&lt;/i&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;i&gt;- Flags &lt;font color=&quot;#ef4444&quot;&gt;&lt;b&gt;ANOMALY / LEAK DETECTED&lt;/b&gt;&lt;/font&gt; when acoustic shifts from normal&lt;/i&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Closed-Loop PID Engine:&lt;/b&gt; Sensor Fusion (AI Vision + AI Sound + I2C)&lt;br&gt;&amp;bull; &lt;b&gt;I2C Master:&lt;/b&gt; Read Pressure &amp;amp; State from STM32 Target (0x58)&lt;br&gt;&amp;bull; &lt;b&gt;FPGA RTL:&lt;/b&gt; 10-bit pwm_controller.sv (PMOD1 P1 Air Pump)&lt;br&gt;&amp;bull; &lt;b&gt;Solenoid GPIO:&lt;/b&gt; PE11 Over-Expansion Relief Vent (PMOD1 P2)&lt;br&gt;&amp;bull; &lt;b&gt;Hardware E-Stop:&lt;/b&gt; Logic Gate &amp;lt; 10ns Cutoff (PMOD1 P4)&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#38bdf8;strokeWidth=3;fontColor=#ffffff;fontSize=12;fontFamily=Helvetica;align=center;verticalAlign=middle;" vertex="1" parent="1">
-          <mxGeometry x="1170" y="270" width="410" height="490" as="geometry" />
+        <mxCell id="fpga_dut" value="&lt;b&gt;Target Under Test (DUT)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;4&quot;&gt;&lt;b&gt;AMD Kria KR260 Robotics Starter Kit&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#38bdf8&quot;&gt;FPGA PL Fabric (Xilinx Zynq UltraScale+ MPSoC) + Linux PetaLinux PS&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;div align=&quot;left&quot; style=&quot;padding-left:14px;&quot;&gt;&amp;bull; &lt;b&gt;Virtual Video Device:&lt;/b&gt; &lt;font color=&quot;#10b981&quot;&gt;&lt;b&gt;/dev/video0 (v4l2loopback)&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Vitis AI Vision DPU:&lt;/b&gt; &lt;u&gt;Inspects GI Cavity: LUMEN OPEN vs COLLAPSED&lt;/u&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Vitis AI Acoustic Anomaly Detector (DPU):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;i&gt;- Trained on Normal Airflow sound baseline (16 kHz stereo PCM)&lt;/i&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;&lt;i&gt;- Flags &lt;font color=&quot;#ef4444&quot;&gt;&lt;b&gt;ANOMALY / LEAK DETECTED&lt;/b&gt;&lt;/font&gt; on 3 kHz leak hiss&lt;/i&gt;&lt;br&gt;&amp;bull; &lt;b&gt;Closed-Loop PID Engine:&lt;/b&gt; Sensor Fusion (Vision + Audio + Pressure)&lt;br&gt;&amp;bull; &lt;b&gt;Ultra-Fast Safety Interlock:&lt;/b&gt; Hardware logic cutoff &amp;lt; 10ns on E-Stop / Overpressure&lt;br&gt;&lt;br&gt;&lt;b&gt;PHYSICAL INTERFACE CONNECTOR ALLOCATION:&lt;/b&gt;&lt;br&gt;&amp;bull; &lt;b&gt;RPi Header (J10):&lt;/b&gt; I2C Master (Pin 5 SCL, Pin 3 SDA) with 1.8k Pull-Ups&lt;br&gt;&amp;bull; &lt;b&gt;PMOD 1 (J1 - Dedicated Audio):&lt;/b&gt; AXI I2S Receiver IP Core&lt;br&gt;&amp;nbsp;&amp;nbsp;- Pin 1: BCLK &amp;nbsp;|&amp;nbsp; Pin 2: WS (LRCLK) &amp;nbsp;|&amp;nbsp; Pin 3: SD (Data) &amp;nbsp;|&amp;nbsp; Pin 5: GND&lt;br&gt;&amp;bull; &lt;b&gt;PMOD 2 (J2 - Control &amp;amp; Safety IO):&lt;/b&gt;&lt;br&gt;&amp;nbsp;&amp;nbsp;- Pin 1: Air Pump PWM Output (10-bit pwm_controller.sv RTL)&lt;br&gt;&amp;nbsp;&amp;nbsp;- Pin 2: Solenoid Purge Valve Output (Over-Expansion Vent)&lt;br&gt;&amp;nbsp;&amp;nbsp;- Pin 3: Doctor Start/Stop Input (from STM32 PE13)&lt;br&gt;&amp;nbsp;&amp;nbsp;- Pin 4: Doctor E-Stop Button Input (from STM32 PE11 - Cutoff)&lt;br&gt;&amp;nbsp;&amp;nbsp;- Pin 7: Safety Tripped Status Output (to STM32 PE9)&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#38bdf8;strokeWidth=3;fontColor=#ffffff;fontSize=12;fontFamily=Helvetica;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="240" width="560" height="660" as="geometry" />
         </mxCell>
 
         <!-- ============================================================= -->
-        <!-- VIDEO STREAM LINE: HOST PC -> KR260 V4L2 -->
+        <!-- VIDEO STREAM LINE: HOST PC -> KR260 V4L2                      -->
         <!-- ============================================================= -->
-        <mxCell id="edge_video_stream" value="&lt;b&gt;Ethernet LAN (UDP Port 5000 / RTP H.264)&lt;/b&gt;&lt;br&gt;&amp;rarr; &lt;font color=&quot;#059669&quot;&gt;&lt;b&gt;v4l2loopback (/dev/video0)&lt;/b&gt;&lt;/font&gt; &amp;rarr; &lt;b&gt;Vitis AI Vision (GI Open vs Closed)&lt;/b&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=3.5;strokeColor=#10b981;fontColor=#047857;fontSize=11.5;" edge="1" parent="1" source="pc_host" target="fpga_dut">
+        <mxCell id="edge_video_stream" value="&lt;b&gt;Gigabit Ethernet LAN (UDP Port 5000 / RTP H.264 Video Stream)&lt;/b&gt;&lt;br&gt;&amp;rarr; &lt;font color=&quot;#059669&quot;&gt;&lt;b&gt;v4l2loopback (/dev/video0)&lt;/b&gt;&lt;/font&gt; &amp;rarr; &lt;b&gt;Vitis AI Vision (GI Lumen Open vs Closed)&lt;/b&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=3.5;strokeColor=#10b981;fontColor=#047857;fontSize=11.5;" edge="1" parent="1" source="pc_host" target="fpga_dut">
           <mxGeometry x="-0.1" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="190" y="16" />
-              <mxPoint x="1375" y="16" />
+              <mxPoint x="205" y="16" />
+              <mxPoint x="1720" y="16" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
 
-        <!-- SENSING ARROWS (Solid: Plant -> FPGA) -->
-        <!-- Pressure lines -->
-        <mxCell id="arrow_press" value="I2C SCL/SDA (Addr 0x58)&lt;br&gt;Current Pressure" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.45;entryDx=0;entryDy=0;strokeWidth=2.5;strokeColor=#0284c7;fontColor=#0369a1;fontSize=11;" edge="1" parent="1" source="sc2_press" target="fpga_dut">
+        <!-- ============================================================= -->
+        <!-- SENSING ARROWS: STM32 -> KR260 (SOLID LINES)                 -->
+        <!-- ============================================================= -->
+
+        <!-- I2C Pressure Line -->
+        <mxCell id="arrow_i2c" value="&lt;b&gt;I2C1 Sensor Bus (Addr 0x58)&lt;/b&gt;&lt;br&gt;STM32 PB8/PB9 &amp;harr; KR260 RPi Header J10 Pin 5/3 (Current Pressure)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;strokeWidth=2.5;strokeColor=#6366f1;fontColor=#3730a3;fontSize=11;" edge="1" parent="1" source="pin_i2c" target="fpga_dut">
           <mxGeometry x="0.1" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1050" y="353" />
-              <mxPoint x="1050" y="490" />
+              <mxPoint x="1220" y="848" />
+              <mxPoint x="1220" y="405" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
 
-        <!-- ALL SCENARIOS SOUND BUS -> KR260 ADC/MIC -->
-        <!-- Normal Sound Arrow (Scenario 2) -->
-        <mxCell id="arrow_sound_norm" value="&lt;b&gt;PMOD2 ADC (PA4)&lt;/b&gt;&lt;br&gt;Normal Airflow Audio" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.35;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#0284c7;fontColor=#0369a1;fontSize=10;" edge="1" parent="1" source="sc2_sound" target="fpga_dut">
+        <!-- I2S Audio Bus (Normal + Anomaly) -->
+        <mxCell id="arrow_i2s_bus" value="&lt;b&gt;Digital I2S2 Audio Bus (16 kHz, 16-bit signed Stereo PCM)&lt;/b&gt;&lt;br&gt;&amp;bull; BCLK: PB13 (D18) &amp;rarr; PMOD1 Pin 1&lt;br&gt;&amp;bull; WS: PB12 (D19) &amp;rarr; PMOD1 Pin 2&lt;br&gt;&amp;bull; SD: PB15 (D17) &amp;rarr; PMOD1 Pin 3&lt;br&gt;&lt;i&gt;(Normal Laminar Hum vs 3 kHz Abnormal Acoustic Leak Hiss)&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.42;entryDx=0;entryDy=0;strokeWidth=3;strokeColor=#0284c7;fontColor=#0369a1;fontSize=11;" edge="1" parent="1" source="pin_i2s" target="fpga_dut">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1260" y="778" />
+              <mxPoint x="1260" y="517" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Doctor Start/Stop Command -->
+        <mxCell id="arrow_doctor_start" value="&lt;b&gt;Doctor Start/Stop Button (3.3V GPIO)&lt;/b&gt;&lt;br&gt;STM32 PE13 (D3) &amp;rarr; KR260 PMOD2 Pin 3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.15;exitDx=0;exitDy=0;entryX=0;entryY=0.58;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#16a34a;fontColor=#15803d;fontSize=10.5;" edge="1" parent="1" source="pin_estop_start" target="fpga_dut">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1300" y="899" />
+              <mxPoint x="1300" y="623" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Doctor Emergency Stop Button (E-Stop 1) -->
+        <mxCell id="arrow_doctor_estop" value="&lt;b&gt;Doctor Emergency Stop Button (Mock Cutoff)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#dc2626&quot;&gt;STM32 PE11 (D5) &amp;rarr; KR260 PMOD2 Pin 4 (Hardware Interlock Gate)&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.68;entryDx=0;entryDy=0;strokeWidth=2.5;strokeColor=#dc2626;fontColor=#b91c1c;fontSize=10.5;" edge="1" parent="1" source="pin_estop_start" target="fpga_dut">
+          <mxGeometry x="-0.15" relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1340" y="923" />
+              <mxPoint x="1340" y="689" />
+            </Array>
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================= -->
+        <!-- ACTUATION & FEEDBACK ARROWS: KR260 -> STM32 (DASHED LINES)    -->
+        <!-- ============================================================= -->
+
+        <!-- KR260 Safety Tripped Status (E-Stop 2) -->
+        <mxCell id="arrow_safety_tripped" value="&lt;b&gt;KR260 Safety Tripped Status Feedback&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#d97706&quot;&gt;KR260 PMOD2 Pin 7 &amp;rarr; STM32 PE9 (D6)&lt;br&gt;(High = FPGA Hardware Interlock or AI Tripped)&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.78;exitDx=0;exitDy=0;entryX=1;entryY=0.65;entryDx=0;entryDy=0;strokeWidth=2.5;strokeColor=#d97706;fontColor=#b45309;fontSize=10.5;dashed=1;" edge="1" parent="1" source="fpga_dut" target="pin_estop_start">
           <mxGeometry x="0.1" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1030" y="353" />
-              <mxPoint x="1030" y="441" />
+              <mxPoint x="1380" y="755" />
+              <mxPoint x="1380" y="947" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
 
-        <!-- Low Pressure Sound Arrow (Scenario 3) -->
-        <mxCell id="arrow_sound_low" value="Pump Ramp Whir" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.55;entryDx=0;entryDy=0;strokeWidth=1.8;strokeColor=#0284c7;fontColor=#0369a1;fontSize=10;" edge="1" parent="1" source="sc3_sound" target="fpga_dut">
+        <!-- Solenoid Valve Control -->
+        <mxCell id="arrow_solenoid" value="&lt;b&gt;Solenoid Purge Valve Command&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#dc2626&quot;&gt;KR260 PMOD2 Pin 2 &amp;rarr; STM32 PE14 (D4) (Open=0V Vent, Close=3.3V Hold)&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.88;exitDx=0;exitDy=0;entryX=1;entryY=0.82;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=10.5;dashed=1;" edge="1" parent="1" source="fpga_dut" target="pin_estop_start">
           <mxGeometry x="0.1" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1040" y="593" />
-              <mxPoint x="1040" y="540" />
+              <mxPoint x="1400" y="821" />
+              <mxPoint x="1400" y="963" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
 
-        <!-- Gas Leak Abnormal Sound Arrow (Scenario 4) -->
-        <mxCell id="arrow_sound_leak" value="&lt;b&gt;Abnormal Acoustic Hiss (3 kHz)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#dc2626&quot;&gt;&amp;rarr; Triggers Anomaly Detection!&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;strokeWidth=3;strokeColor=#dc2626;fontColor=#991b1b;fontSize=11;" edge="1" parent="1" source="sc4_sound" target="fpga_dut">
-          <mxGeometry x="0.2" relative="1" as="geometry">
+        <!-- Air Pump PWM Feedback -->
+        <mxCell id="arrow_pwm" value="&lt;b&gt;Air Pump PWM Feedback (10-bit RTL)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#7c3aed&quot;&gt;KR260 PMOD2 Pin 1 &amp;rarr; STM32 PF15 (D2) (Duty Cycle Capture)&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.96;exitDx=0;exitDy=0;entryX=1;entryY=0.95;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#7c3aed;fontColor=#6d28d9;fontSize=10.5;dashed=1;" edge="1" parent="1" source="fpga_dut" target="pin_estop_start">
+          <mxGeometry x="0.15" relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1060" y="833" />
-              <mxPoint x="1060" y="638" />
-            </Array>
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- ACTUATION ARROWS (Dashed: FPGA Feedback -> Plant) -->
-        <!-- PWM Feedback -->
-        <mxCell id="arrow_pwm" value="PMOD1 Pin 1 (H12) -&amp;gt; STM32 PF15&lt;br&gt;Air Pump PWM (10-bit FPGA RTL)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.88;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#7c3aed;fontColor=#6d28d9;fontSize=11;dashed=1;" edge="1" parent="1" source="fpga_dut" target="sc2_pwm">
-          <mxGeometry x="0.1" relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1100" y="701" />
-              <mxPoint x="1100" y="413" />
-            </Array>
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-
-        <!-- Solenoid Valve Feedback -->
-        <mxCell id="arrow_valve" value="PMOD1 Pin 2 (E10) -&amp;gt; STM32 PE11&lt;br&gt;Solenoid Vent Valve (MOSFET NO)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.15;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#dc2626;fontColor=#991b1b;fontSize=11;dashed=1;" edge="1" parent="1" source="fpga_dut" target="sc1_valve">
-          <mxGeometry x="0.3" relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1110" y="344" />
-              <mxPoint x="1110" y="173" />
+              <mxPoint x="1420" y="874" />
+              <mxPoint x="1420" y="975" />
             </Array>
             <mxPoint as="offset" />
           </mxGeometry>

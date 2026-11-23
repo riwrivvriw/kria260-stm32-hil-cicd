@@ -40,7 +40,9 @@ typedef struct {
     bool solenoid_valve_open;   /* true = เปิดวาล์วระบายก๊าซ (Vent) */
     bool audio_leak_active;     /* true = กำลังขับสัญญาณเสียงลมรั่ว AC Audio */
     bool start_stop_io;         /* สถานะลอจิก Start/Stop จาก KR260 */
-    bool estop_active;          /* สถานะลอจิก Emergency Stop จาก KR260 */
+    bool estop_active;          /* สถานะลอจิก Emergency Stop สรุปรวม */
+    bool doctor_estop_btn;      /* สถานะปุ่ม E-Stop ของแพทย์ (STM32 -> KR260 / D5) */
+    bool kr260_safety_tripped;  /* สถานะ Safety Tripped จาก KR260 (KR260 -> STM32 / D6) */
     bool auto_simulation;       /* true = คำนวณสมการพลศาสตร์ตามเวลาจริง */
     const char *camera_scene;   /* คำอธิบายฉากวิดีโอที่ต้องสตรีมผ่าน Ethernet */
 } gi_system_status_t;
@@ -71,16 +73,18 @@ const char* gi_state_get_camera_scene(gi_state_t state);
 void gi_state_machine_set_state(gi_state_t new_state);
 
 /**
- * @brief คำนวณและอัปเดต State Machine ตามสภาวะอินพุตจาก KR260 (PWM, IO, E-Stop, Solenoid)
+ * @brief คำนวณและอัปเดต State Machine ตามสภาวะอินพุต (Dual E-Stop, PWM, IO, Solenoid)
  * @param dt คาบเวลาการคำนวณในหน่วยวินาที (เช่น 0.05s)
  * @param pump_duty ค่า Duty Cycle ที่วัดได้จาก KR260 (0.0 - 1.0)
  * @param pwm_freq ค่าความถี่ PWM (Hz)
- * @param start_stop_pin ลอจิกขา Start/Stop IO จาก KR260
- * @param estop_pin ลอจิกขา E-Stop จาก KR260
- * @param solenoid_valve_pin ลอจิกสถานะวาล์วเปิดระบายก๊าซ (true = เปิดวาล์วระบาย / Vent)
+ * @param start_stop_pin ลอจิกขา Start/Stop IO จาก KR260 (D3)
+ * @param doctor_estop_btn ลอจิกปุ่ม Emergency Stop ของแพทย์ (D5)
+ * @param kr260_safety_tripped ลอจิกสัญญาณ Safety Tripped จาก KR260 (D6)
+ * @param solenoid_valve_pin ลอจิกสถานะวาล์วเปิดระบายก๊าซ (D4)
  */
 void gi_state_machine_update(float dt, float pump_duty, uint32_t pwm_freq,
-                             bool start_stop_pin, bool estop_pin, bool solenoid_valve_pin);
+                             bool start_stop_pin, bool doctor_estop_btn,
+                             bool kr260_safety_tripped, bool solenoid_valve_pin);
 
 /**
  * @brief ดึงข้อมูลสถานะทั้งหมดแบบ Thread-safe

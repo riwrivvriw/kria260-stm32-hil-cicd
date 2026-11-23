@@ -9,42 +9,46 @@
  *          - พิน D68 (PF0) = SDA (ช่อง CN9 pin 21)
  * 3. Doctor Start/Stop Button (Output):
  *          - พิน D3 (PE13)
- * 4. Solenoid Purge Valve Command (Input):
- *          - พิน D4 (PE14)
- * 5. Emergency Stop Input (Input):
+ * 4. Doctor Emergency Stop Button (Output):
  *          - พิน D5 (PE11)
- * 6. Leak Audio Digital I2S Output (Emulated Digital Mic):
+ * 5. KR260 Solenoid Purge Valve Command (Input):
+ *          - พิน D4 (PE14)
+ * 6. KR260 Safety Tripped Status (Input):
+ *          - พิน D6 (PE9)
+ * 7. Leak Audio Digital I2S Output (Emulated Digital Mic):
  *          - BCLK (SCK) : พิน D18 (PB13) (CN7 pin 30)
  *          - WS (LRCLK) : พิน D19 (PB12) (CN7 pin 16)
  *          - SD (DOUT)  : พิน D17 (PB15) (CN7 pin 26)
- * 7. KR260 PWM Input:
+ * 8. KR260 PWM Input:
  *          - พิน D2 (PF15)
  */
 
 / {
     aliases {
-        hil-target        = &pressure_target;
-        hil-master        = &i2c2;
-        hil-audio-i2s     = &i2s2;
-        kr260-pwm         = &kr260_pwm_input;
-        kr260-start-stop  = &kr260_start_stop_output;
-        kr260-solenoid    = &kr260_solenoid_input;
-        kr260-estop       = &kr260_estop_input;
+        hil-target            = &pressure_target;
+        hil-master            = &i2c2;
+        hil-audio-i2s         = &i2s2;
+        kr260-pwm             = &kr260_pwm_input;
+        kr260-start-stop      = &kr260_start_stop_output;
+        kr260-estop-btn       = &kr260_estop_button_output;
+        kr260-solenoid        = &kr260_solenoid_input;
+        kr260-safety-tripped  = &kr260_safety_tripped_input;
+        kr260-estop           = &kr260_safety_tripped_input;
     };
 
     kr260_hil_inputs {
         compatible = "gpio-keys";
         kr260_pwm_input: pwm_in {
             gpios = <&gpiof 15 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
-            label = "KR260 Airpump PWM Capture Input";
+            label = "KR260 Airpump PWM Capture Input (Arduino D2)";
         };
         kr260_solenoid_input: solenoid_in {
             gpios = <&gpioe 14 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
             label = "KR260 Solenoid Valve Control Input (Arduino D4)";
         };
-        kr260_estop_input: estop_in {
-            gpios = <&gpioe 11 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
-            label = "KR260 Emergency Stop Input (Arduino D5)";
+        kr260_safety_tripped_input: safety_tripped_in {
+            gpios = <&gpioe 9 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
+            label = "KR260 Safety Tripped Status Input (Arduino D6)";
         };
     };
 
@@ -53,6 +57,10 @@
         kr260_start_stop_output: start_stop_out {
             gpios = <&gpioe 13 GPIO_ACTIVE_HIGH>;
             label = "Mock Doctor Start/Stop Button Output to KR260 (Arduino D3)";
+        };
+        kr260_estop_button_output: estop_btn_out {
+            gpios = <&gpioe 11 GPIO_ACTIVE_HIGH>;
+            label = "Mock Doctor Emergency Stop Button Output to KR260 (Arduino D5)";
         };
     };
 };

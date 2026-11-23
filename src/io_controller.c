@@ -1,6 +1,6 @@
 /**
  * @file io_controller.c
- * @brief การทำงานของ Hardware GPIO Controller สำหรับ KR260 Handshake
+ * @brief การทำงานของ Hardware GPIO Controller สำหรับ Dual E-Stop และ Handshake ร่วมกับ KR260
  */
 
 #include "io_controller.h"
@@ -13,23 +13,30 @@ LOG_MODULE_REGISTER(io_controller, LOG_LEVEL_INF);
 static bool g_mock_start_stop = false;
 static bool g_mock_start_stop_override = false;
 
-static bool g_mock_estop = false;
-static bool g_mock_estop_override = false;
+static bool g_mock_estop_btn = false;
+static bool g_mock_estop_btn_override = false;
+
+static bool g_mock_safety_tripped = false;
+static bool g_mock_safety_tripped_override = false;
 
 static bool g_mock_solenoid = false;
 static bool g_mock_solenoid_override = false;
 
-/* ตรวจสอบ DeviceTree Aliases หากมีการประกาศพิน */
+/* ตรวจสอบ DeviceTree Aliases */
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_start_stop))
 static const struct gpio_dt_spec start_stop_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(kr260_start_stop), gpios);
 #endif
 
-#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop))
-static const struct gpio_dt_spec estop_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(kr260_estop), gpios);
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop_btn))
+static const struct gpio_dt_spec estop_btn_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(kr260_estop_btn), gpios);
 #endif
 
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_solenoid))
 static const struct gpio_dt_spec solenoid_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(kr260_solenoid), gpios);
+#endif
+
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_safety_tripped))
+static const struct gpio_dt_spec safety_tripped_gpio = GPIO_DT_SPEC_GET(DT_ALIAS(kr260_safety_tripped), gpios);
 #endif
 
 int io_controller_init(void)
@@ -37,26 +44,36 @@ int io_controller_init(void)
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_start_stop))
     if (gpio_is_ready_dt(&start_stop_gpio)) {
         gpio_pin_configure_dt(&start_stop_gpio, GPIO_OUTPUT_INACTIVE);
-        LOG_INF("KR260 Mock Doctor Start/Stop Output ready on %s pin %d (Default: STOP/0V)",
+        LOG_INF("KR260 Mock Doctor Start/Stop Output ready on %s pin %d (Default: STOP/0V, Arduino D3)",
                 start_stop_gpio.port->name, start_stop_gpio.pin);
     }
 #endif
 
-#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop))
-    if (gpio_is_ready_dt(&estop_gpio)) {
-        gpio_pin_configure_dt(&estop_gpio, GPIO_INPUT);
-        LOG_INF("KR260 E-Stop GPIO ready on %s pin %d", estop_gpio.port->name, estop_gpio.pin);
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop_btn))
+    if (gpio_is_ready_dt(&estop_btn_gpio)) {
+        gpio_pin_configure_dt(&estop_btn_gpio, GPIO_OUTPUT_INACTIVE);
+        LOG_INF("KR260 Mock Doctor E-Stop Button Output ready on %s pin %d (Default: RELEASED/0V, Arduino D5)",
+                estop_btn_gpio.port->name, estop_btn_gpio.pin);
     }
 #endif
 
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_solenoid))
     if (gpio_is_ready_dt(&solenoid_gpio)) {
         gpio_pin_configure_dt(&solenoid_gpio, GPIO_INPUT);
-        LOG_INF("KR260 Solenoid Valve GPIO ready on %s pin %d", solenoid_gpio.port->name, solenoid_gpio.pin);
+        LOG_INF("KR260 Solenoid Valve Input ready on %s pin %d (Arduino D4)",
+                solenoid_gpio.port->name, solenoid_gpio.pin);
     }
 #endif
 
-    LOG_INF("IO Controller Initialized.");
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_safety_tripped))
+    if (gpio_is_ready_dt(&safety_tripped_gpio)) {
+        gpio_pin_configure_dt(&safety_tripped_gpio, GPIO_INPUT);
+        LOG_INF("KR260 Safety Tripped Status Input ready on %s pin %d (Arduino D6)",
+                safety_tripped_gpio.port->name, safety_tripped_gpio.pin);
+    }
+#endif
+
+    LOG_INF("Dual E-Stop IO Controller Initialized.");
     return 0;
 }
 
@@ -79,7 +96,6 @@ int io_controller_set_doctor_button(bool active)
         return 0;
     }
 #endif
-    LOG_INF("Mock Doctor Button state updated: %s", active ? "START" : "STOP");
     return 0;
 }
 
@@ -89,21 +105,55 @@ int io_controller_pulse_doctor_button(uint32_t duration_ms)
     io_controller_set_doctor_button(true);
     k_msleep(duration_ms > 0 ? duration_ms : 200);
     io_controller_set_doctor_button(false);
-    LOG_INF("Mock Doctor Button: Pulse complete, returned to STOP");
     return 0;
+}
+
+int io_controller_set_doctor_estop(bool active)
+{
+    g_mock_estop_btn_override = true;
+    g_mock_estop_btn = active;
+
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop_btn))
+    if (gpio_is_ready_dt(&estop_btn_gpio)) {
+        gpio_pin_set_dt(&estop_btn_gpio, active ? 1 : 0);
+        LOG_INF("Mock Doctor E-Stop Button driven to %s (Pin %d = %d)",
+                active ? "PRESSED (3.3V)" : "RELEASED (0V)",
+                estop_btn_gpio.pin, active ? 1 : 0);
+        return 0;
+    }
+#endif
+    return 0;
+}
+
+bool io_controller_get_doctor_estop(void)
+{
+    if (g_mock_estop_btn_override) {
+        return g_mock_estop_btn;
+    }
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop_btn))
+    if (gpio_is_ready_dt(&estop_btn_gpio)) {
+        return (gpio_pin_get_dt(&estop_btn_gpio) > 0);
+    }
+#endif
+    return g_mock_estop_btn;
+}
+
+bool io_controller_get_safety_tripped(void)
+{
+    if (g_mock_safety_tripped_override) {
+        return g_mock_safety_tripped;
+    }
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_safety_tripped))
+    if (gpio_is_ready_dt(&safety_tripped_gpio)) {
+        return (gpio_pin_get_dt(&safety_tripped_gpio) > 0);
+    }
+#endif
+    return g_mock_safety_tripped;
 }
 
 bool io_controller_get_estop(void)
 {
-    if (g_mock_estop_override) {
-        return g_mock_estop;
-    }
-#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop))
-    if (gpio_is_ready_dt(&estop_gpio)) {
-        return (gpio_pin_get_dt(&estop_gpio) > 0);
-    }
-#endif
-    return g_mock_estop;
+    return io_controller_get_doctor_estop() || io_controller_get_safety_tripped();
 }
 
 bool io_controller_get_solenoid_valve(void)
@@ -113,12 +163,6 @@ bool io_controller_get_solenoid_valve(void)
     }
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_solenoid))
     if (gpio_is_ready_dt(&solenoid_gpio)) {
-        /*
-         * วงจรฮาร์ดแวร์ Solenoid Valve:
-         * ชนิด Normally Open (NO) ผ่าน N-Channel MOSFET:
-         * - ขาเกต HIGH (3.3V) -> MOSFET ON -> ขดลวดดึงแกน "ปิดวาล์ว" (Holding Gas, valve_open = false)
-         * - ขาเกต LOW (0V)    -> MOSFET OFF -> ขดลวดคลายแกน "เปิดวาล์ว" (Venting Gas, valve_open = true)
-         */
         int pin_level = gpio_pin_get_dt(&solenoid_gpio);
         return (pin_level == 0); /* LOW = วาล์วเปิดระบายก๊าซทิ้ง (Over-Expansion Deflate) */
     }
@@ -133,9 +177,16 @@ void io_controller_set_mock_start_stop(bool active)
 
 void io_controller_set_mock_estop(bool active)
 {
-    g_mock_estop_override = true;
-    g_mock_estop = active;
-    LOG_INF("Mock E-Stop set to %d", active);
+    io_controller_set_doctor_estop(active);
+    io_controller_set_mock_safety_tripped(active);
+    LOG_INF("Mock E-Stop (Doctor Button & Safety Trip) set to %d", active);
+}
+
+void io_controller_set_mock_safety_tripped(bool active)
+{
+    g_mock_safety_tripped_override = true;
+    g_mock_safety_tripped = active;
+    LOG_INF("Mock KR260 Safety Tripped set to %d", active);
 }
 
 void io_controller_set_mock_solenoid(bool active)
@@ -148,29 +199,50 @@ void io_controller_set_mock_solenoid(bool active)
 void io_controller_clear_mock_overrides(void)
 {
     g_mock_start_stop_override = false;
-    g_mock_estop_override = false;
+    g_mock_estop_btn_override = false;
+    g_mock_safety_tripped_override = false;
     g_mock_solenoid_override = false;
+
     g_mock_start_stop = false;
-    g_mock_estop = false;
+    g_mock_estop_btn = false;
+    g_mock_safety_tripped = false;
     g_mock_solenoid = false;
+
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_start_stop))
+    if (gpio_is_ready_dt(&start_stop_gpio)) {
+        gpio_pin_set_dt(&start_stop_gpio, 0);
+    }
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop_btn))
+    if (gpio_is_ready_dt(&estop_btn_gpio)) {
+        gpio_pin_set_dt(&estop_btn_gpio, 0);
+    }
+#endif
+
     LOG_INF("Mock GPIO overrides cleared. Now reading physical hardware pins.");
 }
 
-int io_controller_get_physical_levels(int *start_out, int *sol_in, int *estop_in)
+int io_controller_get_physical_levels(int *d3_start_out, int *d5_estop_btn_out,
+                                      int *d4_sol_in, int *d6_tripped_in)
 {
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_start_stop))
-    if (start_out && gpio_is_ready_dt(&start_stop_gpio)) {
-        *start_out = gpio_pin_get_dt(&start_stop_gpio);
+    if (d3_start_out && gpio_is_ready_dt(&start_stop_gpio)) {
+        *d3_start_out = gpio_pin_get_dt(&start_stop_gpio);
+    }
+#endif
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop_btn))
+    if (d5_estop_btn_out && gpio_is_ready_dt(&estop_btn_gpio)) {
+        *d5_estop_btn_out = gpio_pin_get_dt(&estop_btn_gpio);
     }
 #endif
 #if DT_NODE_EXISTS(DT_ALIAS(kr260_solenoid))
-    if (sol_in && gpio_is_ready_dt(&solenoid_gpio)) {
-        *sol_in = gpio_pin_get_dt(&solenoid_gpio);
+    if (d4_sol_in && gpio_is_ready_dt(&solenoid_gpio)) {
+        *d4_sol_in = gpio_pin_get_dt(&solenoid_gpio);
     }
 #endif
-#if DT_NODE_EXISTS(DT_ALIAS(kr260_estop))
-    if (estop_in && gpio_is_ready_dt(&estop_gpio)) {
-        *estop_in = gpio_pin_get_dt(&estop_gpio);
+#if DT_NODE_EXISTS(DT_ALIAS(kr260_safety_tripped))
+    if (d6_tripped_in && gpio_is_ready_dt(&safety_tripped_gpio)) {
+        *d6_tripped_in = gpio_pin_get_dt(&safety_tripped_gpio);
     }
 #endif
     return 0;
