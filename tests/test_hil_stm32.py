@@ -311,9 +311,9 @@ def test_05_mock_control_ios(hil, csv_record):
     csv_record({"io_tests": "Start/Stop, Solenoid, and E-Stop verified"})
 
 
-@pytest.mark.skip(
-    reason="รอต่อสาย I2C เข้ากับบอร์ด Kria KR260 (ฮาร์ดแวร์บอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนสายสัญญาณ)"
-)
+# @pytest.mark.skip(
+#     reason="รอต่อสาย I2C เข้ากับบอร์ด Kria KR260 (ฮาร์ดแวร์บอร์ด Nucleo ไม่มีตัวต้านทาน Pull-up บนสายสัญญาณ)"
+# )
 def test_06_i2c_loopback_self_test(hil, csv_record):
     """
     ทดสอบ I2C Master-to-Slave Loopback บนบอร์ด STM32

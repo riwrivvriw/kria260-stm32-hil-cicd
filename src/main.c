@@ -28,13 +28,14 @@
 LOG_MODULE_REGISTER(hil_main, LOG_LEVEL_INF);
 
 /* -------------------------------------------------------------------------- */
-/* นิยาม Register Map ของ I2C Target (0x58)                                    */
+/* นิยาม Register Map ของ I2C Pressure Sensor Mock (Addr: 0x58)                */
+/* จำลอง Standard 16-bit Digital Pressure Sensor (Big-Endian MSB + LSB)        */
 /* -------------------------------------------------------------------------- */
 #define TARGET_I2C_ADDR       0x58
-#define REG_CHIP_ID           0x00  /* 0x58 */
-#define REG_STATUS            0x01  /* Bitfield Status */
-#define REG_PRESSURE_MSB      0x02  /* Pressure in kPa * 100 (MSB) */
-#define REG_PRESSURE_LSB      0x03  /* Pressure in kPa * 100 (LSB) */
+#define REG_PRESSURE_MSB      0x00  /* Pressure in kPa * 100 (MSB) */
+#define REG_PRESSURE_LSB      0x01  /* Pressure in kPa * 100 (LSB) */
+#define REG_STATUS            0x02  /* Bitfield Status */
+#define REG_CHIP_ID           0x03  /* 0x58 */
 #define REG_GI_STATE          0x04  /* State ID: 0..5 */
 #define REG_PUMP_DUTY         0x05  /* Duty 0-100% */
 #define REG_TARGET_PRESSURE   0x06  /* Target Pressure Setpoint */
@@ -144,8 +145,8 @@ static int run_i2c_loopback_test(uint16_t *read_raw_pressure, uint8_t *read_chip
         return -ENODEV;
     }
 
-    uint8_t reg_addr = REG_CHIP_ID;
-    uint8_t rx_data[8] = {0};
+    uint8_t reg_addr = REG_PRESSURE_MSB;
+    uint8_t rx_data[2] = {0};
 
     int ret = i2c_write_read(i2c_master, TARGET_I2C_ADDR,
                              &reg_addr, 1,
@@ -155,8 +156,8 @@ static int run_i2c_loopback_test(uint16_t *read_raw_pressure, uint8_t *read_chip
         return ret;
     }
 
-    *read_chip_id = rx_data[0];
-    *read_raw_pressure = (rx_data[2] << 8) | rx_data[3];
+    *read_chip_id = TARGET_I2C_ADDR;
+    *read_raw_pressure = (rx_data[0] << 8) | rx_data[1];
     return 0;
 }
 
@@ -514,14 +515,22 @@ int main(void)
     io_controller_init();
 
     // 2. กำหนดค่า Buffer เริ่มต้น
-    g_i2c_buffer[REG_CHIP_ID] = TARGET_I2C_ADDR;
-    g_i2c_buffer[REG_STATUS]  = 0x00;
+    g_i2c_buffer[REG_PRESSURE_MSB] = (10132 >> 8) & 0xFF;
+    g_i2c_buffer[REG_PRESSURE_LSB] = 10132 & 0xFF;
+    g_i2c_buffer[REG_STATUS]       = 0x00;
+    g_i2c_buffer[REG_CHIP_ID]      = TARGET_I2C_ADDR;
 
     // 3. ผูก I2C Target EEPROM Device
     g_target_dev = DEVICE_DT_GET(DT_ALIAS(hil_target));
     if (!device_is_ready(g_target_dev)) {
         LOG_ERR("Target device (hil-target) is NOT ready!");
         return -ENODEV;
+    }
+
+    int reg_ret = i2c_target_driver_register(g_target_dev);
+    if (reg_ret != 0) {
+    LOG_ERR("i2c_target_driver_register failed: %d", reg_ret);
+    return reg_ret;
     }
     update_eeprom_memory();
 
