@@ -96,9 +96,11 @@
     status = "disabled";
 };
 
+#ifdef HAS_NUCLEO_UCPD1
 &ucpd1 {
     status = "disabled";
 };
+#endif
 
 /* I2S2: จำลอง Digital MEMS Microphone สำหรับสัญญาณเสียงลมรั่ว (Leak Audio)
  * - PB13 (Arduino D18) : BCLK
