@@ -1,4 +1,4 @@
-/**
+            /**
  * @file kr260_pwm_receiver.c
  * @brief ไดรเวอร์ตรวจวัดสัญญาณ PWM จากบอร์ด Kria KR260 (Airpump Output)
  * @details ใช้สถาปัตยกรรม GPIO Dual-Edge Interrupt ร่วมกับ Zephyr Hardware Cycle Counter (DWT)
